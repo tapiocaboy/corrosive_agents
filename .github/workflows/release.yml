@@ -1,0 +1,55 @@
+name: Release
+
+# Publishes to crates.io when a version tag is pushed:
+#
+#   git tag -a v0.1.0 -m "corrosive_agents v0.1.0"
+#   git push origin v0.1.0
+#
+# Requires the repository secret CARGO_REGISTRY_TOKEN (a crates.io API token
+# with publish scope): Settings → Secrets and variables → Actions.
+
+on:
+  push:
+    tags: ["v[0-9]+.[0-9]+.[0-9]+*"]
+
+env:
+  CARGO_TERM_COLOR: always
+
+jobs:
+  publish:
+    name: publish to crates.io
+    runs-on: ubuntu-latest
+    permissions:
+      contents: write # create the GitHub release
+    steps:
+      - uses: actions/checkout@v4
+
+      - uses: dtolnay/rust-toolchain@stable
+
+      - name: Check tag matches Cargo.toml version
+        run: |
+          crate_version="$(cargo metadata --no-deps --format-version 1 | jq -r '.packages[0].version')"
+          tag_version="${GITHUB_REF_NAME#v}"
+          if [ "$crate_version" != "$tag_version" ]; then
+            echo "::error::tag v${tag_version} does not match Cargo.toml version ${crate_version}"
+            exit 1
+          fi
+
+      - name: Run the full test suite
+        run: |
+          cargo fmt --check
+          cargo clippy --all-targets --features full -- -D warnings
+          cargo test --features full
+
+      - name: Publish
+        run: cargo publish --locked
+        env:
+          CARGO_REGISTRY_TOKEN: ${{ secrets.CARGO_REGISTRY_TOKEN }}
+
+      - name: Create GitHub release
+        run: |
+          gh release create "$GITHUB_REF_NAME" \
+            --title "corrosive_agents $GITHUB_REF_NAME" \
+            --generate-notes
+        env:
+          GH_TOKEN: ${{ github.token }}

@@ -1,0 +1,13 @@
+# Build artifacts
+/target
+
+# Secrets — never commit API keys
+.env
+.env.*
+!.env.example
+
+# Editor / OS noise
+.idea/
+.vscode/
+.DS_Store
+tools/protogen/

@@ -1,0 +1,24 @@
+{
+  "name": "manifest-agent",
+  "version": "1.0.0",
+  "description": "An agent defined entirely by this JSON manifest",
+  "model": "nvidia/llama-3.3-nemotron-super-49b-v1",
+  "system_prompt": "You are a helpful assistant. Keep answers short.",
+  "capabilities": [
+    { "name": "chat", "description": "Conversational Q&A" },
+    { "name": "rag", "description": "Retrieval-augmented answers", "enabled": false },
+    {
+      "name": "summarize",
+      "description": "Summarizes documents",
+      "config": { "max_words": 150 }
+    }
+  ],
+  "skills": ["word_count"],
+  "mcp_servers": [
+    {
+      "name": "fs",
+      "command": "npx",
+      "args": ["-y", "@modelcontextprotocol/server-filesystem", "/tmp"]
+    }
+  ]
+}
