@@ -63,20 +63,86 @@ impl AgentIdentity {
         B64.encode(self.signing_key.verifying_key().to_bytes())
     }
 
+    /// The identity as a W3C `did:key` DID (Ed25519 multicodec,
+    /// base58btc multibase), e.g. `did:key:z6Mk…`.
+    pub fn did_key(&self) -> String {
+        did_key_from_public_bytes(&self.signing_key.verifying_key().to_bytes())
+    }
+
     /// Sign arbitrary bytes, returning a base64-encoded Ed25519 signature.
     pub fn sign(&self, message: &[u8]) -> String {
         B64.encode(self.signing_key.sign(message).to_bytes())
     }
 }
 
+/// Multicodec prefix identifying an Ed25519 public key inside a `did:key`.
+const DID_KEY_ED25519_MULTICODEC: [u8; 2] = [0xed, 0x01];
+
+fn did_key_from_public_bytes(public_key: &[u8; 32]) -> String {
+    let mut bytes = Vec::with_capacity(34);
+    bytes.extend_from_slice(&DID_KEY_ED25519_MULTICODEC);
+    bytes.extend_from_slice(public_key);
+    format!("did:key:z{}", bs58::encode(bytes).into_string())
+}
+
+/// Convert a base64 Ed25519 public key into its `did:key` form.
+pub fn did_key_from_public(public_key_base64: &str) -> Result<String> {
+    let bytes = B64
+        .decode(public_key_base64.trim())
+        .map_err(|e| Error::Identity(format!("invalid base64 public key: {e}")))?;
+    let bytes: [u8; 32] = bytes
+        .try_into()
+        .map_err(|_| Error::Identity("public key must be exactly 32 bytes".into()))?;
+    Ok(did_key_from_public_bytes(&bytes))
+}
+
+/// Extract the base64 Ed25519 public key from a `did:key:z…` DID.
+pub fn public_key_from_did(did: &str) -> Result<String> {
+    let encoded = did.trim().strip_prefix("did:key:z").ok_or_else(|| {
+        Error::Identity("only did:key with base58btc multibase ('z') is supported".into())
+    })?;
+    let bytes = bs58::decode(encoded)
+        .into_vec()
+        .map_err(|e| Error::Identity(format!("invalid base58 in did:key: {e}")))?;
+    let key = bytes
+        .strip_prefix(&DID_KEY_ED25519_MULTICODEC)
+        .ok_or_else(|| Error::Identity("did:key does not contain an Ed25519 key".into()))?;
+    if key.len() != 32 {
+        return Err(Error::Identity(
+            "did:key payload must be a 32-byte Ed25519 key".into(),
+        ));
+    }
+    Ok(B64.encode(key))
+}
+
+/// Accept a key in either form — base64 or `did:key:` — and return it
+/// normalized to base64. Everything in this crate that verifies keys
+/// (manifests, trust stores, pinned A2A peers) accepts both.
+pub fn normalize_key(key_or_did: &str) -> Result<String> {
+    let trimmed = key_or_did.trim();
+    if trimmed.starts_with("did:key:") {
+        return public_key_from_did(trimmed);
+    }
+    // Validate that it actually is a 32-byte base64 key.
+    let bytes = B64
+        .decode(trimmed)
+        .map_err(|e| Error::Identity(format!("invalid base64 public key: {e}")))?;
+    if bytes.len() != 32 {
+        return Err(Error::Identity(
+            "public key must be exactly 32 bytes".into(),
+        ));
+    }
+    Ok(trimmed.to_string())
+}
+
 /// Verify a detached base64 Ed25519 `signature` over `message` with a
-/// base64-encoded `public_key`.
+/// `public_key` given as base64 or as a `did:key:` DID.
 ///
 /// Returns `Ok(())` when the signature is valid, [`Error::Verification`]
 /// otherwise.
 pub fn verify_signature(public_key: &str, message: &[u8], signature: &str) -> Result<()> {
     let key_bytes = B64
-        .decode(public_key.trim())
+        .decode(normalize_key(public_key)?)
         .map_err(|e| Error::Identity(format!("invalid base64 public key: {e}")))?;
     let key_bytes: [u8; 32] = key_bytes
         .try_into()
@@ -130,5 +196,40 @@ mod tests {
         let other = AgentIdentity::generate();
         let sig = identity.sign(b"msg");
         assert!(verify_signature(&other.public_key_base64(), b"msg", &sig).is_err());
+    }
+
+    #[test]
+    fn did_key_roundtrip() {
+        let identity = AgentIdentity::generate();
+        let did = identity.did_key();
+        assert!(
+            did.starts_with("did:key:z6Mk"),
+            "ed25519 did:key starts with z6Mk, got {did}"
+        );
+        assert_eq!(
+            public_key_from_did(&did).unwrap(),
+            identity.public_key_base64()
+        );
+        assert_eq!(
+            did_key_from_public(&identity.public_key_base64()).unwrap(),
+            did
+        );
+    }
+
+    #[test]
+    fn verify_accepts_did_as_key() {
+        let identity = AgentIdentity::generate();
+        let sig = identity.sign(b"did message");
+        verify_signature(&identity.did_key(), b"did message", &sig).unwrap();
+    }
+
+    #[test]
+    fn normalize_key_accepts_both_forms() {
+        let identity = AgentIdentity::generate();
+        let b64 = identity.public_key_base64();
+        assert_eq!(normalize_key(&b64).unwrap(), b64);
+        assert_eq!(normalize_key(&identity.did_key()).unwrap(), b64);
+        assert!(normalize_key("did:key:not-multibase").is_err());
+        assert!(normalize_key("not base64!!!").is_err());
     }
 }

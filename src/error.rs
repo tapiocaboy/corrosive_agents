@@ -52,6 +52,11 @@ pub enum Error {
     #[error("server error: {0}")]
     Server(String),
 
+    /// Agent-to-agent delegation failure (peer unreachable, untrusted, or
+    /// returned an error).
+    #[error("A2A error: {0}")]
+    A2a(String),
+
     /// The agent was asked to do something it was not built for
     /// (e.g. `chat` without an LLM provider).
     #[error("agent has no {0} configured")]

@@ -18,13 +18,15 @@ or any **custom vector store**.
 
 | | |
 |---|---|
-| 🏗️ **Builder pattern** | Fluent `Agent::builder()…build()` construction with validation |
+| 🏗️ **Builder pattern** | Fluent `Agent::builder()…build()` construction with semver + config validation |
 | 📄 **JSON manifests** | Load name/version/capabilities/skills/MCP servers from a file |
-| 🔐 **Verifiable identity** | Ed25519-signed manifests; verify with the embedded or a pinned public key |
+| 🔐 **Verifiable identity** | Ed25519-signed manifests; `did:key` DIDs; key rotation chains & revocations (`TrustStore`) |
 | 🧠 **NVIDIA Nemotron** | Chat, streaming (SSE), and embeddings via the free NIM API |
 | 🛠️ **Skills** | Async JSON-in/JSON-out abilities, invocable locally or over any transport |
 | 🔌 **MCP** | stdio JSON-RPC client: `initialize`, `tools/list`, `tools/call` |
 | 🌐 **Transports** | REST + WebSocket (axum) and gRPC (tonic, vendored protos — no `protoc` needed) |
+| 🤝 **A2A delegation** | `RemoteAgent` peers with pinned-key/DID verification; delegate chat & skills |
+| 💾 **Sessions** | Pluggable `SessionStore`: in-memory, SQLite, or Redis persistence |
 | 📚 **Vector stores** | One trait; in-memory, Qdrant, Pinecone backends; `remember`/`recall` RAG helpers |
 
 ## Installation
@@ -41,13 +43,15 @@ Optional features:
 corrosive_agents = { version = "0.1", features = ["full"] } # grpc + qdrant + pinecone
 ```
 
-| Feature    | Default | Enables                               |
-|------------|---------|----------------------------------------|
-| `server`   | ✅      | REST + WebSocket serving (axum)        |
-| `grpc`     | —       | gRPC serving + generated client (tonic)|
-| `pinecone` | —       | Pinecone vector store backend          |
-| `qdrant`   | —       | Qdrant vector store backend            |
-| `full`     | —       | All of the above                       |
+| Feature           | Default | Enables                               |
+|-------------------|---------|----------------------------------------|
+| `server`          | ✅      | REST + WebSocket serving (axum)        |
+| `grpc`            | —       | gRPC serving + generated client (tonic)|
+| `pinecone`        | —       | Pinecone vector store backend          |
+| `qdrant`          | —       | Qdrant vector store backend            |
+| `sqlite-sessions` | —       | SQLite-persisted conversation history  |
+| `redis-sessions`  | —       | Redis-persisted conversation history   |
+| `full`            | —       | All of the above                       |
 
 ## Quickstart
 
@@ -140,7 +144,7 @@ use std::sync::Arc;
 use corrosive_agents::prelude::*;
 
 # async fn run() -> Result<()> {
-# let agent = Agent::builder().name("a").version("1").build()?;
+# let agent = Agent::builder().name("a").version("1.0.0").build()?;
 let agent = Arc::new(agent);
 
 // REST + WebSocket (feature `server`, on by default)
@@ -195,6 +199,7 @@ methods: `upsert`, `search`, `delete`).
 | `vector_rag` | Embeddings + vector store + retrieval-augmented answers | `cargo run --example vector_rag` |
 | `serve` | REST + WebSocket server | `cargo run --example serve` |
 | `serve_grpc` | gRPC server | `cargo run --example serve_grpc --features grpc` |
+| `a2a_delegation` | Agent-to-agent delegation with DID-pinned peer verification (offline) | `cargo run --example a2a_delegation` |
 
 All LLM examples need `NVIDIA_API_KEY` (or `NVIDIA_KEY` in a `.env` file).
 
