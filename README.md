@@ -230,8 +230,6 @@ cargo llvm-cov --features full      # code coverage report
 cargo run --manifest-path tools/protogen/Cargo.toml   # regen gRPC code after editing proto/
 ```
 
-Releasing to crates.io: see [PUBLISHING.md](PUBLISHING.md).
-Roadmap: see [TODO.md](TODO.md).
 
 ## License
 
