@@ -217,6 +217,8 @@ The catalog evolves — list what your key can reach with
 cargo test --features full          # unit + integration + doc tests
 cargo clippy --all-targets --features full
 cargo fmt --check
+cargo deny check                    # advisories, licenses, bans, sources (deny.toml)
+cargo llvm-cov --features full      # code coverage report
 cargo run --manifest-path tools/protogen/Cargo.toml   # regen gRPC code after editing proto/
 ```
 
