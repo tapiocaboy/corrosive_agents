@@ -1,5 +1,8 @@
 # corrosive_agents
 
+[![CI](https://github.com/tapiocaboy/corrosive_agents/actions/workflows/ci.yml/badge.svg?branch=main)](https://github.com/tapiocaboy/corrosive_agents/actions/workflows/ci.yml)
+[![Security audit](https://github.com/tapiocaboy/corrosive_agents/actions/workflows/audit.yml/badge.svg)](https://github.com/tapiocaboy/corrosive_agents/actions/workflows/audit.yml)
+[![codecov](https://codecov.io/gh/tapiocaboy/corrosive_agents/branch/main/graph/badge.svg)](https://codecov.io/gh/tapiocaboy/corrosive_agents)
 [![Crates.io](https://img.shields.io/crates/v/corrosive_agents.svg)](https://crates.io/crates/corrosive_agents)
 [![docs.rs](https://img.shields.io/docsrs/corrosive_agents)](https://docs.rs/corrosive_agents)
 [![License](https://img.shields.io/badge/license-MIT%2FApache--2.0-blue.svg)](#license)
