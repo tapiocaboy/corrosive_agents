@@ -78,7 +78,7 @@ jobs:
       - run: cargo check --all-targets --features full
 
   package:
-    name: publish dry-run
+    name: packaging check (dry-run, never publishes)
     runs-on: ubuntu-latest
     steps:
       - uses: actions/checkout@v4
@@ -86,7 +86,9 @@ jobs:
       - uses: Swatinem/rust-cache@v2
       # Fails if the crate would not be publishable (bad metadata, missing
       # files, or code that only compiles thanks to files excluded from the
-      # package, e.g. .env or tools/).
+      # package, e.g. .env or tools/). This is a local build check only —
+      # nothing is uploaded; publishing happens exclusively in release.yml
+      # when a GitHub Release is published.
       - run: cargo publish --dry-run --allow-dirty
 
   deny:
