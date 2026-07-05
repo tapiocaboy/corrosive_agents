@@ -109,6 +109,14 @@ pub struct AgentManifest {
     /// Base64 Ed25519 public key of the signing identity (set by [`sign`](Self::sign)).
     #[serde(default, skip_serializing_if = "Option::is_none")]
     pub public_key: Option<String>,
+    /// The signing identity as a W3C `did:key` DID (set by [`sign`](Self::sign)).
+    /// Always corresponds to `public_key`; [`verify`](Self::verify) checks the pair.
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    pub did: Option<String>,
+    /// Chain of key rotations (oldest first) ending at `public_key` — see
+    /// [`rotate_identity`](Self::rotate_identity) and [`crate::trust`].
+    #[serde(default, skip_serializing_if = "Vec::is_empty")]
+    pub key_history: Vec<crate::trust::RotationProof>,
     /// Base64 Ed25519 signature over the canonical manifest JSON
     /// (set by [`sign`](Self::sign)).
     #[serde(default, skip_serializing_if = "Option::is_none")]
@@ -158,35 +166,63 @@ impl AgentManifest {
         Ok(serde_json::to_vec(&unsigned)?)
     }
 
-    /// Sign the manifest: embeds the identity's public key and a signature
-    /// over the canonical JSON.
+    /// Sign the manifest: embeds the identity's public key (and its `did:key`
+    /// DID) plus a signature over the canonical JSON.
     pub fn sign(&mut self, identity: &AgentIdentity) -> Result<()> {
         self.public_key = Some(identity.public_key_base64());
+        self.did = Some(identity.did_key());
         let bytes = self.signable_bytes()?;
         self.signature = Some(identity.sign(&bytes));
         Ok(())
     }
 
+    /// Rotate the agent's identity: the old key signs a
+    /// [`RotationProof`](crate::trust::RotationProof) endorsing the new key,
+    /// the proof is appended to `key_history`, and the manifest is re-signed
+    /// with the new identity.
+    ///
+    /// Consumers who pinned the old key keep trusting the agent via
+    /// [`TrustStore::verify_manifest`](crate::trust::TrustStore::verify_manifest).
+    pub fn rotate_identity(&mut self, old: &AgentIdentity, new: &AgentIdentity) -> Result<()> {
+        if self.public_key.as_deref() != Some(old.public_key_base64().as_str()) {
+            return Err(Error::Identity(
+                "rotation must start from the manifest's current key".into(),
+            ));
+        }
+        self.key_history
+            .push(crate::trust::RotationProof::create(old, new));
+        self.sign(new)
+    }
+
     /// Verify the manifest against its embedded public key.
     ///
     /// Fails if the manifest is unsigned, the key/signature are malformed,
-    /// or any signed field was modified after signing.
+    /// any signed field was modified after signing, or the embedded `did`
+    /// does not match `public_key`.
     pub fn verify(&self) -> Result<()> {
         let public_key = self
             .public_key
             .as_deref()
             .ok_or_else(|| Error::Verification("manifest has no public key".into()))?;
+        if let Some(did) = &self.did {
+            if crate::identity::public_key_from_did(did)? != public_key {
+                return Err(Error::Verification(
+                    "manifest did does not match its public key".into(),
+                ));
+            }
+        }
         self.verify_with(public_key)
     }
 
-    /// Verify the manifest against an externally supplied base64 public key —
-    /// use this when you already know which key the agent *should* have.
-    pub fn verify_with(&self, public_key: &str) -> Result<()> {
+    /// Verify the manifest against an externally supplied key — base64 or
+    /// `did:key:` DID. Use this when you already know which identity the
+    /// agent *should* have.
+    pub fn verify_with(&self, key_or_did: &str) -> Result<()> {
         let signature = self
             .signature
             .as_deref()
             .ok_or_else(|| Error::Verification("manifest is not signed".into()))?;
-        verify_signature(public_key, &self.signable_bytes()?, signature)
+        verify_signature(key_or_did, &self.signable_bytes()?, signature)
     }
 }
 
@@ -248,5 +284,38 @@ mod tests {
         let cap: Capability = serde_json::from_str(r#"{"name": "chat"}"#).unwrap();
         assert!(cap.enabled);
         assert!(cap.description.is_empty());
+    }
+
+    #[test]
+    fn signing_embeds_matching_did() {
+        let identity = AgentIdentity::generate();
+        let mut manifest = sample();
+        manifest.sign(&identity).unwrap();
+        assert_eq!(manifest.did, Some(identity.did_key()));
+        manifest.verify().unwrap();
+        // Verification also works when pinning by DID instead of base64.
+        manifest.verify_with(&identity.did_key()).unwrap();
+
+        // A mismatched DID is rejected even with an intact signature chain.
+        manifest.did = Some(AgentIdentity::generate().did_key());
+        assert!(manifest.verify().is_err());
+    }
+
+    #[test]
+    fn rotate_identity_re_signs_and_records_history() {
+        let old = AgentIdentity::generate();
+        let new = AgentIdentity::generate();
+        let mut manifest = sample();
+        manifest.sign(&old).unwrap();
+
+        manifest.rotate_identity(&old, &new).unwrap();
+        assert_eq!(manifest.public_key, Some(new.public_key_base64()));
+        assert_eq!(manifest.key_history.len(), 1);
+        manifest.verify().unwrap();
+        manifest.key_history[0].verify().unwrap();
+
+        // Rotating from a key that is not current is refused.
+        let stranger = AgentIdentity::generate();
+        assert!(manifest.rotate_identity(&stranger, &old).is_err());
     }
 }

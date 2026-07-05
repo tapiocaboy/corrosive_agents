@@ -10,11 +10,13 @@ use serde::{Deserialize, Serialize};
 use serde_json::Value;
 use tokio::sync::RwLock;
 
+use crate::a2a::RemoteAgent;
 use crate::agent::{AgentBuilder, AgentManifest, Capability};
 use crate::error::{Error, Result};
 use crate::identity::AgentIdentity;
 use crate::llm::{ChatMessage, ChatRequest, EmbeddingProvider, LlmProvider, StreamChunk};
 use crate::mcp::{McpClient, McpTool};
+use crate::session::SessionStore;
 use crate::skills::SkillRegistry;
 use crate::vector::{Document, SearchResult, VectorStore};
 
@@ -54,7 +56,8 @@ pub struct Agent {
     pub(crate) vector_store: Option<Arc<dyn VectorStore>>,
     pub(crate) skills: SkillRegistry,
     pub(crate) mcp_clients: RwLock<HashMap<String, Arc<McpClient>>>,
-    pub(crate) sessions: Arc<RwLock<HashMap<String, Vec<ChatMessage>>>>,
+    pub(crate) sessions: Arc<dyn SessionStore>,
+    pub(crate) peers: RwLock<HashMap<String, Arc<RemoteAgent>>>,
 }
 
 impl std::fmt::Debug for Agent {
@@ -149,16 +152,14 @@ impl Agent {
 
     /// Build the message list for a turn: system prompt + session history +
     /// the new user message. Does not mutate the session.
-    async fn conversation(&self, session_id: &str, message: &str) -> Vec<ChatMessage> {
+    async fn conversation(&self, session_id: &str, message: &str) -> Result<Vec<ChatMessage>> {
         let mut messages = Vec::new();
         if let Some(system_prompt) = &self.manifest.system_prompt {
             messages.push(ChatMessage::system(system_prompt));
         }
-        if let Some(history) = self.sessions.read().await.get(session_id) {
-            messages.extend(history.iter().cloned());
-        }
+        messages.extend(self.sessions.load(session_id).await?);
         messages.push(ChatMessage::user(message));
-        messages
+        Ok(messages)
     }
 
     fn request_for(&self, messages: Vec<ChatMessage>) -> ChatRequest {
@@ -167,28 +168,25 @@ impl Agent {
         request
     }
 
-    async fn record_turn(
-        sessions: &RwLock<HashMap<String, Vec<ChatMessage>>>,
-        session_id: &str,
-        user: &str,
-        assistant: &str,
-    ) {
-        let mut sessions = sessions.write().await;
-        let history = sessions.entry(session_id.to_string()).or_default();
-        history.push(ChatMessage::user(user));
-        history.push(ChatMessage::assistant(assistant));
-    }
-
     /// Send a message in the given session and return the assistant's reply.
     ///
-    /// Conversation history is kept per `session_id`; the manifest's system
-    /// prompt (if any) is prepended to every turn.
+    /// Conversation history is kept per `session_id` in the agent's
+    /// [`SessionStore`]; the manifest's system prompt (if any) is prepended
+    /// to every turn.
     pub async fn chat(&self, session_id: &str, message: impl AsRef<str>) -> Result<String> {
         let message = message.as_ref();
         let llm = self.require_llm()?;
-        let request = self.request_for(self.conversation(session_id, message).await);
+        let request = self.request_for(self.conversation(session_id, message).await?);
         let response = llm.chat(request).await?;
-        Self::record_turn(&self.sessions, session_id, message, &response.content).await;
+        self.sessions
+            .append(
+                session_id,
+                &[
+                    ChatMessage::user(message),
+                    ChatMessage::assistant(&response.content),
+                ],
+            )
+            .await?;
         Ok(response.content)
     }
 
@@ -202,7 +200,7 @@ impl Agent {
     ) -> Result<BoxStream<'static, Result<StreamChunk>>> {
         let message = message.as_ref().to_string();
         let llm = self.require_llm()?;
-        let request = self.request_for(self.conversation(session_id, &message).await);
+        let request = self.request_for(self.conversation(session_id, &message).await?);
         let mut inner = llm.chat_stream(request).await?;
 
         let sessions = Arc::clone(&self.sessions);
@@ -212,10 +210,15 @@ impl Agent {
             while let Some(chunk) = inner.next().await {
                 let chunk = chunk?;
                 if chunk.done {
-                    let mut sessions = sessions.write().await;
-                    let history = sessions.entry(session_id.clone()).or_default();
-                    history.push(ChatMessage::user(message.clone()));
-                    history.push(ChatMessage::assistant(reply.clone()));
+                    sessions
+                        .append(
+                            &session_id,
+                            &[
+                                ChatMessage::user(message.clone()),
+                                ChatMessage::assistant(reply.clone()),
+                            ],
+                        )
+                        .await?;
                     yield chunk;
                     break;
                 }
@@ -226,9 +229,68 @@ impl Agent {
         Ok(Box::pin(stream))
     }
 
+    /// The full conversation history of a session.
+    pub async fn session_history(&self, session_id: &str) -> Result<Vec<ChatMessage>> {
+        self.sessions.load(session_id).await
+    }
+
+    /// Ids of all sessions known to the session store.
+    pub async fn list_sessions(&self) -> Result<Vec<String>> {
+        self.sessions.list_sessions().await
+    }
+
     /// Drop the conversation history for a session.
-    pub async fn clear_session(&self, session_id: &str) {
-        self.sessions.write().await.remove(session_id);
+    pub async fn clear_session(&self, session_id: &str) -> Result<()> {
+        self.sessions.clear(session_id).await
+    }
+
+    /// The session store backing this agent's conversation history.
+    pub fn session_store(&self) -> Arc<dyn SessionStore> {
+        Arc::clone(&self.sessions)
+    }
+
+    /// Register a peer agent for delegation under a local name.
+    pub async fn add_peer(&self, name: impl Into<String>, peer: RemoteAgent) {
+        self.peers.write().await.insert(name.into(), Arc::new(peer));
+    }
+
+    /// Get a registered peer by name.
+    pub async fn peer(&self, name: &str) -> Option<Arc<RemoteAgent>> {
+        self.peers.read().await.get(name).cloned()
+    }
+
+    /// Names of all registered peers.
+    pub async fn list_peers(&self) -> Vec<String> {
+        self.peers.read().await.keys().cloned().collect()
+    }
+
+    async fn require_peer(&self, name: &str) -> Result<Arc<RemoteAgent>> {
+        self.peer(name)
+            .await
+            .ok_or_else(|| Error::A2a(format!("peer '{name}' is not registered")))
+    }
+
+    /// Delegate a chat turn to a registered peer agent (A2A). If the peer was
+    /// registered with a pinned key, its manifest is cryptographically
+    /// verified before the first delegation.
+    pub async fn delegate_chat(
+        &self,
+        peer: &str,
+        session_id: &str,
+        message: &str,
+    ) -> Result<String> {
+        self.require_peer(peer)
+            .await?
+            .chat(session_id, message)
+            .await
+    }
+
+    /// Delegate a skill execution to a registered peer agent (A2A).
+    pub async fn delegate_skill(&self, peer: &str, skill: &str, input: Value) -> Result<Value> {
+        self.require_peer(peer)
+            .await?
+            .execute_skill(skill, input)
+            .await
     }
 
     /// Connect to every MCP server declared in the manifest.

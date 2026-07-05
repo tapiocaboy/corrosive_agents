@@ -56,12 +56,15 @@
 //! | `qdrant`   | no      | Qdrant vector store backend               |
 //! | `full`     | no      | All of the above                          |
 
+pub mod a2a;
 pub mod agent;
 pub mod error;
 pub mod identity;
 pub mod llm;
 pub mod mcp;
+pub mod session;
 pub mod skills;
+pub mod trust;
 pub mod vector;
 
 #[cfg(feature = "server")]
@@ -81,6 +84,7 @@ pub use error::{Error, Result};
 /// use corrosive_agents::prelude::*;
 /// ```
 pub mod prelude {
+    pub use crate::a2a::RemoteAgent;
     pub use crate::agent::{Agent, AgentBuilder, AgentInfo, AgentManifest, Capability};
     pub use crate::error::{Error, Result};
     pub use crate::identity::AgentIdentity;
@@ -89,9 +93,15 @@ pub mod prelude {
         NvidiaClient, StreamChunk,
     };
     pub use crate::mcp::{McpClient, McpServerConfig, McpTool};
+    pub use crate::session::{InMemorySessionStore, SessionStore};
     pub use crate::skills::{FnSkill, Skill, SkillRegistry};
+    pub use crate::trust::{Revocation, RotationProof, TrustStore};
     pub use crate::vector::{Document, InMemoryVectorStore, SearchResult, VectorStore};
 
+    #[cfg(feature = "redis-sessions")]
+    pub use crate::session::RedisSessionStore;
+    #[cfg(feature = "sqlite-sessions")]
+    pub use crate::session::SqliteSessionStore;
     #[cfg(feature = "pinecone")]
     pub use crate::vector::PineconeStore;
     #[cfg(feature = "qdrant")]

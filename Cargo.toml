@@ -23,8 +23,19 @@ grpc = ["dep:tonic", "dep:prost"]
 pinecone = []
 ## Qdrant vector store backend (REST API).
 qdrant = ["uuid/v5"]
+## SQLite-backed persistent session store.
+sqlite-sessions = ["dep:rusqlite"]
+## Redis-backed persistent session store.
+redis-sessions = ["dep:redis"]
 ## Everything.
-full = ["server", "grpc", "pinecone", "qdrant"]
+full = [
+    "server",
+    "grpc",
+    "pinecone",
+    "qdrant",
+    "sqlite-sessions",
+    "redis-sessions",
+]
 
 [dependencies]
 tokio = { version = "1", features = ["macros", "rt-multi-thread", "sync", "time", "io-util", "process", "net"] }
@@ -38,6 +49,8 @@ async-trait = "0.1"
 ed25519-dalek = { version = "2", features = ["rand_core"] }
 rand = "0.8"
 base64 = "0.22"
+bs58 = "0.5"
+semver = "1"
 tracing = "0.1"
 uuid = { version = "1", features = ["v4"] }
 
@@ -48,7 +61,17 @@ axum = { version = "0.8", features = ["ws"], optional = true }
 tonic = { version = "0.12", optional = true }
 prost = { version = "0.13", optional = true }
 
+# feature = "sqlite-sessions"
+rusqlite = { version = "0.32", features = ["bundled"], optional = true }
+
+# feature = "redis-sessions"
+redis = { version = "0.27", default-features = false, features = [
+    "tokio-comp",
+    "connection-manager",
+], optional = true }
+
 [dev-dependencies]
+axum = { version = "0.8", features = ["ws"] }
 dotenvy = "0.15"
 tracing-subscriber = "0.3"
 tokio = { version = "1", features = ["full"] }
@@ -70,6 +93,10 @@ name = "vector_rag"
 
 [[example]]
 name = "serve"
+required-features = ["server"]
+
+[[example]]
+name = "a2a_delegation"
 required-features = ["server"]
 
 [[example]]

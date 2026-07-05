@@ -6,11 +6,13 @@ use std::sync::Arc;
 
 use tokio::sync::RwLock;
 
+use crate::a2a::RemoteAgent;
 use crate::agent::{Agent, AgentManifest, Capability};
 use crate::error::{Error, Result};
 use crate::identity::AgentIdentity;
 use crate::llm::{EmbeddingProvider, LlmProvider};
 use crate::mcp::McpServerConfig;
+use crate::session::{InMemorySessionStore, SessionStore};
 use crate::skills::{Skill, SkillRegistry};
 use crate::vector::VectorStore;
 
@@ -42,6 +44,8 @@ pub struct AgentBuilder {
     embeddings: Option<Arc<dyn EmbeddingProvider>>,
     vector_store: Option<Arc<dyn VectorStore>>,
     skills: Vec<Arc<dyn Skill>>,
+    session_store: Option<Arc<dyn SessionStore>>,
+    peers: HashMap<String, Arc<RemoteAgent>>,
 }
 
 impl AgentBuilder {
@@ -153,6 +157,25 @@ impl AgentBuilder {
         self
     }
 
+    /// Set the session store backing conversation history. Defaults to
+    /// [`InMemorySessionStore`]; use
+    /// [`SqliteSessionStore`](crate::session::SqliteSessionStore) or
+    /// [`RedisSessionStore`](crate::session::RedisSessionStore) for
+    /// persistence across restarts.
+    #[must_use]
+    pub fn session_store(mut self, store: impl SessionStore + 'static) -> Self {
+        self.session_store = Some(Arc::new(store));
+        self
+    }
+
+    /// Register a peer agent for A2A delegation under a local name
+    /// (see [`crate::a2a`]).
+    #[must_use]
+    pub fn peer(mut self, name: impl Into<String>, peer: RemoteAgent) -> Self {
+        self.peers.insert(name.into(), Arc::new(peer));
+        self
+    }
+
     /// Give the agent an existing identity. The manifest will be signed with
     /// it during [`build`](Self::build).
     #[must_use]
@@ -172,8 +195,9 @@ impl AgentBuilder {
     ///
     /// # Errors
     ///
-    /// Returns [`Error::Config`] when `name` or `version` is empty, and
-    /// propagates signing errors when an identity is present.
+    /// Returns [`Error::Config`] when `name` is empty or `version` is not
+    /// valid [SemVer](https://semver.org) (e.g. `"1.0.0"`, `"2.1.0-beta.1"`),
+    /// and propagates signing errors when an identity is present.
     pub fn build(mut self) -> Result<Agent> {
         if self.manifest.name.trim().is_empty() {
             return Err(Error::Config("agent name is required".into()));
@@ -181,6 +205,12 @@ impl AgentBuilder {
         if self.manifest.version.trim().is_empty() {
             return Err(Error::Config("agent version is required".into()));
         }
+        semver::Version::parse(self.manifest.version.trim()).map_err(|e| {
+            Error::Config(format!(
+                "agent version '{}' is not valid semver: {e}",
+                self.manifest.version
+            ))
+        })?;
 
         let mut registry = SkillRegistry::new();
         for skill in self.skills {
@@ -208,7 +238,10 @@ impl AgentBuilder {
             vector_store: self.vector_store,
             skills: registry,
             mcp_clients: RwLock::new(HashMap::new()),
-            sessions: Arc::new(RwLock::new(HashMap::new())),
+            sessions: self
+                .session_store
+                .unwrap_or_else(|| Arc::new(InMemorySessionStore::new())),
+            peers: RwLock::new(self.peers),
         })
     }
 }
@@ -227,6 +260,23 @@ mod tests {
             Err(Error::Config(_))
         ));
         assert!(Agent::builder().name("x").version("0.1.0").build().is_ok());
+    }
+
+    #[test]
+    fn build_validates_semver() {
+        for bad in ["1", "1.0", "v1.0.0", "abc", "1.0.0.0"] {
+            let err = Agent::builder().name("x").version(bad).build().unwrap_err();
+            assert!(
+                matches!(&err, Error::Config(msg) if msg.contains("semver")),
+                "expected semver error for '{bad}', got: {err}"
+            );
+        }
+        for good in ["1.0.0", "0.1.0", "2.1.0-beta.1", "1.0.0+build.5"] {
+            assert!(
+                Agent::builder().name("x").version(good).build().is_ok(),
+                "'{good}' should be accepted"
+            );
+        }
     }
 
     #[test]
