@@ -104,6 +104,10 @@ jobs:
   coverage:
     name: code coverage
     runs-on: ubuntu-latest
+    env:
+      # Job-level env so the step-level `if` below can test for the secret
+      # (the `secrets` context is not allowed in step `if` expressions).
+      CODECOV_TOKEN: ${{ secrets.CODECOV_TOKEN }}
     steps:
       - uses: actions/checkout@v4
       - uses: dtolnay/rust-toolchain@stable
@@ -121,9 +125,8 @@ jobs:
       # Optional: publishes to codecov.io when the CODECOV_TOKEN secret is
       # set. Without the secret this step is skipped, not failed.
       - name: Upload to Codecov
-        if: ${{ secrets.CODECOV_TOKEN != '' }}
+        if: ${{ env.CODECOV_TOKEN != '' }}
         uses: codecov/codecov-action@v5
         with:
           files: lcov.info
-          token: ${{ secrets.CODECOV_TOKEN }}
           fail_ci_if_error: false
