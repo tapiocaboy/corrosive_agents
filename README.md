@@ -23,14 +23,19 @@ or any **custom vector store**.
 |---|---|
 | 🏗️ **Builder pattern** | Fluent `Agent::builder()…build()` construction with semver + config validation |
 | 📄 **JSON manifests** | Load name/version/capabilities/skills/MCP servers from a file |
-| 🔐 **Verifiable identity** | Ed25519-signed manifests; `did:key` DIDs; key rotation chains & revocations (`TrustStore`) |
-| 🧠 **NVIDIA Nemotron** | Chat, streaming (SSE), and embeddings via the free NIM API |
-| 🛠️ **Skills** | Async JSON-in/JSON-out abilities, invocable locally or over any transport |
-| 🔌 **MCP** | stdio JSON-RPC client: `initialize`, `tools/list`, `tools/call` |
-| 🌐 **Transports** | REST + WebSocket (axum) and gRPC (tonic, vendored protos — no `protoc` needed) |
+| 🔐 **Verifiable identity** | Ed25519 manifests; `did:key` DIDs; X.509 certs; key rotation & revocation (`TrustStore`) |
+| 🧠 **NVIDIA Nemotron** | Chat, streaming, tool calling, embeddings — with retry/backoff + rate-limit handling |
+| 🛠️ **Skills** | Async JSON abilities with a sandbox: allowlists, permissions, timeouts, panic isolation |
+| 🔁 **Tool loop** | `chat_with_tools`: the model auto-invokes skills; usage accounting hooks built in |
+| 🔌 **MCP** | stdio + streamable-HTTP/SSE transports; tools, resources, and prompts |
+| 🌐 **Transports** | REST + WebSocket + gRPC, with API-key/JWT auth, TLS, graceful shutdown, `/ready`, OpenAPI |
 | 🤝 **A2A delegation** | `RemoteAgent` peers with pinned-key/DID verification; delegate chat & skills |
 | 💾 **Sessions** | Pluggable `SessionStore`: in-memory, SQLite, or Redis persistence |
-| 📚 **Vector stores** | One trait; in-memory, Qdrant, Pinecone backends; `remember`/`recall` RAG helpers |
+| 📚 **Vector stores** | In-memory, Qdrant, Pinecone, pgvector; metadata filters, chunking, `remember`/`recall` |
+
+📖 **New to the library? Read the [tutorial](docs/TUTORIAL.md)** — it walks
+from an empty project to a production-shaped agent, and ships on
+[docs.rs](https://docs.rs/corrosive_agents) as the `tutorial` module.
 
 ## Installation
 
@@ -46,15 +51,19 @@ Optional features:
 corrosive_agents = { version = "0.1", features = ["full"] } # grpc + qdrant + pinecone
 ```
 
-| Feature           | Default | Enables                               |
-|-------------------|---------|----------------------------------------|
-| `server`          | ✅      | REST + WebSocket serving (axum)        |
-| `grpc`            | —       | gRPC serving + generated client (tonic)|
-| `pinecone`        | —       | Pinecone vector store backend          |
-| `qdrant`          | —       | Qdrant vector store backend            |
-| `sqlite-sessions` | —       | SQLite-persisted conversation history  |
-| `redis-sessions`  | —       | Redis-persisted conversation history   |
-| `full`            | —       | All of the above                       |
+| Feature           | Default | Enables                                        |
+|-------------------|---------|------------------------------------------------|
+| `server`          | ✅      | REST + WebSocket serving + auth middleware      |
+| `grpc`            | —       | gRPC serving + generated client (tonic)         |
+| `tls`             | —       | TLS helpers for REST and gRPC                   |
+| `openapi`         | —       | OpenAPI 3 document at `/openapi.json`           |
+| `x509`            | —       | X.509 certificate-based identity                |
+| `pinecone`        | —       | Pinecone vector store backend                   |
+| `qdrant`          | —       | Qdrant vector store backend                     |
+| `pgvector`        | —       | PostgreSQL/pgvector vector store backend        |
+| `sqlite-sessions` | —       | SQLite-persisted conversation history           |
+| `redis-sessions`  | —       | Redis-persisted conversation history            |
+| `full`            | —       | All of the above                                |
 
 ## Quickstart
 
@@ -198,6 +207,7 @@ methods: `upsert`, `search`, `delete`).
 | `build_agent` | Builder pattern, capabilities, skills, signed manifest, chat | `cargo run --example build_agent` |
 | `agent_from_json` | Loading an agent + MCP config from `examples/agent.json` | `cargo run --example agent_from_json` |
 | `interactive_chat` | Terminal REPL with streamed tokens | `cargo run --example interactive_chat` |
+| `tool_calling` | Model auto-invokes skills (function calling) + usage hooks | `cargo run --example tool_calling` |
 | `sign_and_verify` | Public-key verification end to end (offline) | `cargo run --example sign_and_verify` |
 | `vector_rag` | Embeddings + vector store + retrieval-augmented answers | `cargo run --example vector_rag` |
 | `serve` | REST + WebSocket server | `cargo run --example serve` |

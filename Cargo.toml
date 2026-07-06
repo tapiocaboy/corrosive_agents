@@ -2,7 +2,7 @@
 name = "corrosive_agents"
 version = "0.1.0"
 edition = "2021"
-rust-version = "1.86"
+rust-version = "1.88"
 authors = ["Kalanamith <gayanworks@gmail.com>"]
 description = "Build verifiable, interactive AI agents powered by NVIDIA Nemotron free LLM models — MCP, skills, Ed25519 identity, REST/WebSocket/gRPC transports, and pluggable vector stores (Pinecone, Qdrant, custom)."
 license = "MIT OR Apache-2.0"
@@ -15,14 +15,22 @@ exclude = [".env", ".github/", "TODO.md", "tools/"]
 
 [features]
 default = ["server"]
-## REST + WebSocket serving via axum.
-server = ["dep:axum"]
+## REST + WebSocket serving via axum (includes API-key/JWT auth middleware).
+server = ["dep:axum", "dep:hmac", "dep:sha2", "dep:ring"]
 ## gRPC serving via tonic (protobuf code is vendored; no protoc needed).
-grpc = ["dep:tonic", "dep:prost"]
+grpc = ["dep:tonic", "dep:tonic-prost", "dep:prost", "dep:hmac", "dep:sha2", "dep:ring"]
+## TLS serving helpers for REST (axum-server) and gRPC (tonic/tls-ring).
+tls = ["dep:axum-server", "tonic?/tls-ring"]
+## OpenAPI 3 document served at /openapi.json.
+openapi = ["server", "dep:utoipa"]
+## X.509 certificate-based identity (self-signed certs from agent keys).
+x509 = ["dep:rcgen", "dep:x509-parser", "ed25519-dalek/pkcs8"]
 ## Pinecone vector store backend (REST API).
 pinecone = []
 ## Qdrant vector store backend (REST API).
 qdrant = ["uuid/v5"]
+## pgvector (PostgreSQL) vector store backend.
+pgvector = ["dep:tokio-postgres", "dep:pgvector"]
 ## SQLite-backed persistent session store.
 sqlite-sessions = ["dep:rusqlite"]
 ## Redis-backed persistent session store.
@@ -31,14 +39,18 @@ redis-sessions = ["dep:redis"]
 full = [
     "server",
     "grpc",
+    "tls",
+    "openapi",
+    "x509",
     "pinecone",
     "qdrant",
+    "pgvector",
     "sqlite-sessions",
     "redis-sessions",
 ]
 
 [dependencies]
-tokio = { version = "1", features = ["macros", "rt-multi-thread", "sync", "time", "io-util", "process", "net"] }
+tokio = { version = "1", features = ["macros", "rt-multi-thread", "sync", "time", "io-util", "process", "net", "signal"] }
 serde = { version = "1", features = ["derive"] }
 serde_json = "1"
 thiserror = "2"
@@ -54,12 +66,30 @@ semver = "1"
 tracing = "0.1"
 uuid = { version = "1", features = ["v4"] }
 
-# feature = "server"
+# feature = "server" / "grpc" (JWT HS256 + RS256/JWKS verification)
 axum = { version = "0.8", features = ["ws"], optional = true }
+hmac = { version = "0.12", optional = true }
+sha2 = { version = "0.10", optional = true }
+ring = { version = "0.17", optional = true }
 
 # feature = "grpc"
-tonic = { version = "0.12", optional = true }
-prost = { version = "0.13", optional = true }
+tonic = { version = "0.14", optional = true }
+tonic-prost = { version = "0.14", optional = true }
+prost = { version = "0.14", optional = true }
+
+# feature = "tls"
+axum-server = { version = "0.8", features = ["tls-rustls"], optional = true }
+
+# feature = "openapi"
+utoipa = { version = "5", optional = true }
+
+# feature = "x509"
+rcgen = { version = "0.13", optional = true }
+x509-parser = { version = "0.16", optional = true }
+
+# feature = "pgvector"
+tokio-postgres = { version = "0.7", features = ["with-serde_json-1"], optional = true }
+pgvector = { version = "0.4", features = ["postgres"], optional = true }
 
 # feature = "sqlite-sessions"
 rusqlite = { version = "0.32", features = ["bundled"], optional = true }

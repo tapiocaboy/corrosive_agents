@@ -3,7 +3,7 @@
 use serde_json::{json, Value};
 
 use crate::error::{Error, Result};
-use crate::vector::{Document, SearchResult, VectorStore};
+use crate::vector::{Document, MetadataFilter, SearchResult, VectorStore};
 
 /// UUID v5 namespace for deterministically mapping document ids to Qdrant
 /// point ids (Qdrant only accepts unsigned integers or UUIDs as point ids).
@@ -110,11 +110,32 @@ impl VectorStore for QdrantStore {
     }
 
     async fn search(&self, vector: Vec<f32>, top_k: usize) -> Result<Vec<SearchResult>> {
+        self.search_filtered(vector, top_k, &MetadataFilter::new())
+            .await
+    }
+
+    async fn search_filtered(
+        &self,
+        vector: Vec<f32>,
+        top_k: usize,
+        filter: &MetadataFilter,
+    ) -> Result<Vec<SearchResult>> {
         let url = format!(
             "{}/collections/{}/points/search",
             self.base_url, self.collection
         );
-        let body = json!({ "vector": vector, "limit": top_k, "with_payload": true });
+        let mut body = json!({ "vector": vector, "limit": top_k, "with_payload": true });
+        if !filter.is_empty() {
+            // Native Qdrant payload filter (metadata lives under "metadata.*").
+            let must: Vec<Value> = filter
+                .equals
+                .iter()
+                .map(|(key, value)| {
+                    json!({ "key": format!("metadata.{key}"), "match": { "value": value } })
+                })
+                .collect();
+            body["filter"] = json!({ "must": must });
+        }
         let response = self.send(self.http.post(&url).json(&body)).await?;
         let hits = response
             .get("result")

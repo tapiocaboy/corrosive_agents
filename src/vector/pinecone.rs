@@ -3,7 +3,7 @@
 use serde_json::{json, Map, Value};
 
 use crate::error::{Error, Result};
-use crate::vector::{Document, SearchResult, VectorStore};
+use crate::vector::{Document, MetadataFilter, SearchResult, VectorStore};
 
 /// A [`VectorStore`] backed by a [Pinecone](https://www.pinecone.io) index.
 ///
@@ -55,6 +55,52 @@ impl PineconeStore {
         }
         Ok(body)
     }
+
+    async fn query(
+        &self,
+        vector: Vec<f32>,
+        top_k: usize,
+        filter: Option<Value>,
+    ) -> Result<Vec<SearchResult>> {
+        let mut body = json!({
+            "vector": vector,
+            "topK": top_k,
+            "includeMetadata": true,
+            "namespace": self.namespace,
+        });
+        if let Some(filter) = filter {
+            body["filter"] = filter;
+        }
+        let response = self.post("/query", body).await?;
+        let matches = response
+            .get("matches")
+            .and_then(Value::as_array)
+            .cloned()
+            .unwrap_or_default();
+        Ok(matches
+            .into_iter()
+            .map(|hit| {
+                let mut metadata = hit.get("metadata").cloned().unwrap_or(Value::Null);
+                let text = metadata
+                    .get("_text")
+                    .and_then(Value::as_str)
+                    .map(String::from);
+                if let Value::Object(map) = &mut metadata {
+                    map.remove("_text");
+                }
+                SearchResult {
+                    id: hit
+                        .get("id")
+                        .and_then(Value::as_str)
+                        .unwrap_or_default()
+                        .to_string(),
+                    score: hit.get("score").and_then(Value::as_f64).unwrap_or(0.0) as f32,
+                    text,
+                    metadata,
+                }
+            })
+            .collect())
+    }
 }
 
 fn to_pinecone_metadata(doc: &Document) -> Value {
@@ -105,41 +151,33 @@ impl VectorStore for PineconeStore {
     }
 
     async fn search(&self, vector: Vec<f32>, top_k: usize) -> Result<Vec<SearchResult>> {
-        let body = json!({
-            "vector": vector,
-            "topK": top_k,
-            "includeMetadata": true,
-            "namespace": self.namespace,
-        });
-        let response = self.post("/query", body).await?;
-        let matches = response
-            .get("matches")
-            .and_then(Value::as_array)
-            .cloned()
-            .unwrap_or_default();
-        Ok(matches
-            .into_iter()
-            .map(|hit| {
-                let mut metadata = hit.get("metadata").cloned().unwrap_or(Value::Null);
-                let text = metadata
-                    .get("_text")
-                    .and_then(Value::as_str)
-                    .map(String::from);
-                if let Value::Object(map) = &mut metadata {
-                    map.remove("_text");
-                }
-                SearchResult {
-                    id: hit
-                        .get("id")
-                        .and_then(Value::as_str)
-                        .unwrap_or_default()
-                        .to_string(),
-                    score: hit.get("score").and_then(Value::as_f64).unwrap_or(0.0) as f32,
-                    text,
-                    metadata,
-                }
+        self.query(vector, top_k, None).await
+    }
+
+    async fn search_filtered(
+        &self,
+        vector: Vec<f32>,
+        top_k: usize,
+        filter: &MetadataFilter,
+    ) -> Result<Vec<SearchResult>> {
+        if filter.is_empty() {
+            return self.query(vector, top_k, None).await;
+        }
+        // Native Pinecone filter. Metadata is stored flat, so only scalar
+        // values match; nested values were stringified at upsert time.
+        let conditions: serde_json::Map<String, Value> = filter
+            .equals
+            .iter()
+            .map(|(key, value)| {
+                let comparable = match value {
+                    Value::String(_) | Value::Number(_) | Value::Bool(_) => value.clone(),
+                    other => Value::String(other.to_string()),
+                };
+                (key.clone(), json!({ "$eq": comparable }))
             })
-            .collect())
+            .collect();
+        self.query(vector, top_k, Some(Value::Object(conditions)))
+            .await
     }
 
     async fn delete(&self, ids: &[String]) -> Result<()> {

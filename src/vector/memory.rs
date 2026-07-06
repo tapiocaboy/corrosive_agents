@@ -5,7 +5,7 @@ use std::collections::HashMap;
 use tokio::sync::RwLock;
 
 use crate::error::{Error, Result};
-use crate::vector::{Document, SearchResult, VectorStore};
+use crate::vector::{Document, MetadataFilter, SearchResult, VectorStore};
 
 /// A thread-safe in-memory vector store using cosine similarity.
 ///
@@ -66,9 +66,20 @@ impl VectorStore for InMemoryVectorStore {
     }
 
     async fn search(&self, vector: Vec<f32>, top_k: usize) -> Result<Vec<SearchResult>> {
+        self.search_filtered(vector, top_k, &MetadataFilter::new())
+            .await
+    }
+
+    async fn search_filtered(
+        &self,
+        vector: Vec<f32>,
+        top_k: usize,
+        filter: &MetadataFilter,
+    ) -> Result<Vec<SearchResult>> {
         let store = self.documents.read().await;
         let mut results: Vec<SearchResult> = store
             .values()
+            .filter(|doc| filter.is_empty() || filter.matches(&doc.metadata))
             .map(|doc| SearchResult {
                 id: doc.id.clone(),
                 score: cosine_similarity(&vector, &doc.vector),
@@ -148,5 +159,36 @@ mod tests {
             .upsert(vec![Document::new("bad", vec![])])
             .await
             .is_err());
+    }
+
+    #[tokio::test]
+    async fn metadata_filter_narrows_results() {
+        let store = InMemoryVectorStore::new();
+        store
+            .upsert(vec![
+                Document::new("r1", vec![1.0, 0.0]).with_metadata(json!({"lang": "rust"})),
+                Document::new("g1", vec![1.0, 0.0]).with_metadata(json!({"lang": "go"})),
+                Document::new("r2", vec![0.9, 0.1]).with_metadata(json!({"lang": "rust"})),
+            ])
+            .await
+            .unwrap();
+
+        let filter = MetadataFilter::new().eq("lang", json!("rust"));
+        let hits = store
+            .search_filtered(vec![1.0, 0.0], 10, &filter)
+            .await
+            .unwrap();
+        assert_eq!(hits.len(), 2);
+        assert!(hits.iter().all(|h| h.metadata["lang"] == "rust"));
+    }
+
+    #[tokio::test]
+    async fn batched_upsert_stores_everything() {
+        let store = InMemoryVectorStore::new();
+        let docs: Vec<Document> = (0..25)
+            .map(|i| Document::new(format!("d{i}"), vec![i as f32, 1.0]))
+            .collect();
+        store.upsert_batched(docs, 10).await.unwrap();
+        assert_eq!(store.len().await, 25);
     }
 }

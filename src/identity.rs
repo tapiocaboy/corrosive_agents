@@ -73,6 +73,18 @@ impl AgentIdentity {
     pub fn sign(&self, message: &[u8]) -> String {
         B64.encode(self.signing_key.sign(message).to_bytes())
     }
+
+    /// The private key as PKCS#8 DER — used by the X.509 module to build
+    /// certificates. **Handle like the secret key itself.**
+    #[cfg(feature = "x509")]
+    pub(crate) fn pkcs8_der(&self) -> Result<Vec<u8>> {
+        use ed25519_dalek::pkcs8::EncodePrivateKey;
+        let document = self
+            .signing_key
+            .to_pkcs8_der()
+            .map_err(|e| Error::Identity(format!("PKCS#8 encoding failed: {e}")))?;
+        Ok(document.as_bytes().to_vec())
+    }
 }
 
 /// Multicodec prefix identifying an Ed25519 public key inside a `did:key`.

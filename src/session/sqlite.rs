@@ -5,11 +5,14 @@ use std::sync::{Arc, Mutex};
 use rusqlite::{params, Connection};
 
 use crate::error::{Error, Result};
-use crate::llm::{ChatMessage, Role};
+use crate::llm::ChatMessage;
 use crate::session::SessionStore;
 
 /// Persists conversation history in a SQLite database (bundled, no external
 /// service required). Safe to share across an application via `Arc`.
+///
+/// Messages are stored as JSON, so tool calls and future message fields
+/// round-trip losslessly.
 ///
 /// ```no_run
 /// use corrosive_agents::session::SqliteSessionStore;
@@ -27,27 +30,6 @@ pub struct SqliteSessionStore {
 impl std::fmt::Debug for SqliteSessionStore {
     fn fmt(&self, f: &mut std::fmt::Formatter<'_>) -> std::fmt::Result {
         f.debug_struct("SqliteSessionStore").finish_non_exhaustive()
-    }
-}
-
-fn role_to_str(role: Role) -> &'static str {
-    match role {
-        Role::System => "system",
-        Role::User => "user",
-        Role::Assistant => "assistant",
-        Role::Tool => "tool",
-    }
-}
-
-fn role_from_str(s: &str) -> Result<Role> {
-    match s {
-        "system" => Ok(Role::System),
-        "user" => Ok(Role::User),
-        "assistant" => Ok(Role::Assistant),
-        "tool" => Ok(Role::Tool),
-        other => Err(Error::Config(format!(
-            "unknown role '{other}' in session store"
-        ))),
     }
 }
 
@@ -71,8 +53,7 @@ impl SqliteSessionStore {
             "CREATE TABLE IF NOT EXISTS messages (
                 session_id TEXT NOT NULL,
                 seq        INTEGER NOT NULL,
-                role       TEXT NOT NULL,
-                content    TEXT NOT NULL,
+                message    TEXT NOT NULL,
                 PRIMARY KEY (session_id, seq)
             );",
         )
@@ -104,44 +85,36 @@ impl SessionStore for SqliteSessionStore {
         let session_id = session_id.to_string();
         let rows = self
             .with_conn(move |conn| {
-                let mut statement = conn.prepare(
-                    "SELECT role, content FROM messages WHERE session_id = ?1 ORDER BY seq",
-                )?;
+                let mut statement = conn
+                    .prepare("SELECT message FROM messages WHERE session_id = ?1 ORDER BY seq")?;
                 let rows = statement
-                    .query_map(params![session_id], |row| {
-                        Ok((row.get::<_, String>(0)?, row.get::<_, String>(1)?))
-                    })?
+                    .query_map(params![session_id], |row| row.get::<_, String>(0))?
                     .collect::<std::result::Result<Vec<_>, _>>()?;
                 Ok(rows)
             })
             .await?;
 
-        rows.into_iter()
-            .map(|(role, content)| {
-                Ok(ChatMessage {
-                    role: role_from_str(&role)?,
-                    content,
-                })
-            })
+        rows.iter()
+            .map(|json| serde_json::from_str(json).map_err(Error::from))
             .collect()
     }
 
     async fn append(&self, session_id: &str, messages: &[ChatMessage]) -> Result<()> {
         let session_id = session_id.to_string();
-        let rows: Vec<(String, String)> = messages
+        let rows: Vec<String> = messages
             .iter()
-            .map(|m| (role_to_str(m.role).to_string(), m.content.clone()))
-            .collect();
+            .map(serde_json::to_string)
+            .collect::<std::result::Result<_, _>>()?;
         self.with_conn(move |conn| {
-            for (role, content) in rows {
+            for message in rows {
                 conn.execute(
-                    "INSERT INTO messages (session_id, seq, role, content)
+                    "INSERT INTO messages (session_id, seq, message)
                      VALUES (
                          ?1,
                          (SELECT COALESCE(MAX(seq), -1) + 1 FROM messages WHERE session_id = ?1),
-                         ?2, ?3
+                         ?2
                      )",
-                    params![session_id, role, content],
+                    params![session_id, message],
                 )?;
             }
             Ok(())
@@ -177,6 +150,7 @@ impl SessionStore for SqliteSessionStore {
 #[cfg(test)]
 mod tests {
     use super::*;
+    use crate::llm::Role;
 
     #[tokio::test]
     async fn roundtrip_in_memory() {
@@ -208,6 +182,31 @@ mod tests {
         store.clear("s1").await.unwrap();
         assert!(store.load("s1").await.unwrap().is_empty());
         assert_eq!(store.list_sessions().await.unwrap(), vec!["s2"]);
+    }
+
+    #[tokio::test]
+    async fn tool_messages_roundtrip_losslessly() {
+        use crate::llm::ToolCall;
+        let store = SqliteSessionStore::in_memory().unwrap();
+        let call = ToolCall {
+            id: "call-1".into(),
+            name: "lookup".into(),
+            arguments: serde_json::json!({ "q": "rust" }),
+        };
+        store
+            .append(
+                "s",
+                &[
+                    ChatMessage::assistant_tool_calls("", vec![call.clone()]),
+                    ChatMessage::tool_result("call-1", r#"{"answer":42}"#),
+                ],
+            )
+            .await
+            .unwrap();
+
+        let history = store.load("s").await.unwrap();
+        assert_eq!(history[0].tool_calls.as_ref().unwrap()[0], call);
+        assert_eq!(history[1].tool_call_id.as_deref(), Some("call-1"));
     }
 
     #[tokio::test]
