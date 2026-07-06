@@ -14,14 +14,18 @@ use crate::a2a::RemoteAgent;
 use crate::agent::{AgentBuilder, AgentManifest, Capability};
 use crate::error::{Error, Result};
 use crate::identity::AgentIdentity;
-use crate::llm::{ChatMessage, ChatRequest, EmbeddingProvider, LlmProvider, StreamChunk};
+use crate::llm::{
+    ChatMessage, ChatRequest, ChatResponse, EmbeddingProvider, LlmProvider, StreamChunk, ToolSpec,
+    UsageEvent, UsageObserver, UsageSnapshot, UsageTotals,
+};
 use crate::mcp::{McpClient, McpTool};
 use crate::session::SessionStore;
-use crate::skills::SkillRegistry;
-use crate::vector::{Document, SearchResult, VectorStore};
+use crate::skills::{SkillPolicy, SkillRegistry};
+use crate::vector::{chunk_text, Document, MetadataFilter, SearchResult, VectorStore};
 
 /// Public, serializable snapshot of an agent — what `GET /agent` returns.
 #[derive(Debug, Clone, Serialize, Deserialize)]
+#[cfg_attr(feature = "openapi", derive(utoipa::ToSchema))]
 pub struct AgentInfo {
     /// Agent name.
     pub name: String,
@@ -55,9 +59,13 @@ pub struct Agent {
     pub(crate) embeddings: Option<Arc<dyn EmbeddingProvider>>,
     pub(crate) vector_store: Option<Arc<dyn VectorStore>>,
     pub(crate) skills: SkillRegistry,
+    pub(crate) skill_policy: SkillPolicy,
     pub(crate) mcp_clients: RwLock<HashMap<String, Arc<McpClient>>>,
     pub(crate) sessions: Arc<dyn SessionStore>,
     pub(crate) peers: RwLock<HashMap<String, Arc<RemoteAgent>>>,
+    pub(crate) usage_totals: Arc<UsageTotals>,
+    pub(crate) usage_observer: Option<Arc<dyn UsageObserver>>,
+    pub(crate) ready: std::sync::atomic::AtomicBool,
 }
 
 impl std::fmt::Debug for Agent {
@@ -141,9 +149,46 @@ impl Agent {
         &self.skills
     }
 
-    /// Execute a registered skill by name.
+    /// Execute a registered skill by name, subject to the agent's
+    /// [`SkillPolicy`] (allowlist, permissions, timeout). Execution runs on
+    /// a separate task so a panicking skill cannot take the agent down.
     pub async fn execute_skill(&self, name: &str, input: Value) -> Result<Value> {
-        self.skills.execute(name, input).await
+        let skill = self
+            .skills
+            .get(name)
+            .ok_or_else(|| Error::SkillNotFound(name.to_string()))?;
+        self.skill_policy.check(skill.as_ref())?;
+
+        let handle = tokio::spawn(async move { skill.execute(input).await });
+        let abort = handle.abort_handle();
+        let outcome = match self.skill_policy.timeout() {
+            Some(limit) => tokio::time::timeout(limit, handle).await.map_err(|_| {
+                abort.abort(); // don't leave the runaway skill running
+                Error::Skill(format!("skill '{name}' timed out after {limit:?}"))
+            })?,
+            None => handle.await,
+        };
+        outcome.map_err(|e| Error::Skill(format!("skill '{name}' panicked: {e}")))?
+    }
+
+    /// Record token usage from a completed response.
+    fn record_usage(&self, session_id: &str, response: &ChatResponse) {
+        if let Some(usage) = &response.usage {
+            let event = UsageEvent {
+                session_id: session_id.to_string(),
+                model: response.model.clone(),
+                usage: usage.clone(),
+            };
+            self.usage_totals.record(&event);
+            if let Some(observer) = &self.usage_observer {
+                observer.on_usage(&event);
+            }
+        }
+    }
+
+    /// Cumulative token usage across all sessions since the agent started.
+    pub fn usage(&self) -> UsageSnapshot {
+        self.usage_totals.snapshot()
     }
 
     fn require_llm(&self) -> Result<Arc<dyn LlmProvider>> {
@@ -178,6 +223,7 @@ impl Agent {
         let llm = self.require_llm()?;
         let request = self.request_for(self.conversation(session_id, message).await?);
         let response = llm.chat(request).await?;
+        self.record_usage(session_id, &response);
         self.sessions
             .append(
                 session_id,
@@ -188,6 +234,70 @@ impl Agent {
             )
             .await?;
         Ok(response.content)
+    }
+
+    /// Like [`chat`](Self::chat), but the model may call the agent's
+    /// registered skills as tools (function calling).
+    ///
+    /// The loop runs until the model answers with plain text (or
+    /// `max_rounds` tool rounds elapse): tool calls are executed through
+    /// [`execute_skill`](Self::execute_skill) — so the [`SkillPolicy`] is
+    /// enforced — and their JSON results are fed back to the model. Skill
+    /// failures are reported to the model as `{"error": …}` results rather
+    /// than aborting the turn.
+    pub async fn chat_with_tools(
+        &self,
+        session_id: &str,
+        message: impl AsRef<str>,
+        max_rounds: usize,
+    ) -> Result<String> {
+        let message = message.as_ref();
+        let llm = self.require_llm()?;
+        let tools: Vec<ToolSpec> = self
+            .skills
+            .list()
+            .iter()
+            .map(|s| ToolSpec::from_skill(s.as_ref()))
+            .collect();
+
+        let mut messages = self.conversation(session_id, message).await?;
+        // Everything after (and including) the user message gets persisted.
+        let mut transcript: Vec<ChatMessage> = vec![ChatMessage::user(message)];
+
+        for _ in 0..max_rounds.max(1) {
+            let mut request = self.request_for(messages.clone());
+            if !tools.is_empty() {
+                request.tools = Some(tools.clone());
+            }
+            let response = llm.chat(request).await?;
+            self.record_usage(session_id, &response);
+
+            if response.tool_calls.is_empty() {
+                transcript.push(ChatMessage::assistant(&response.content));
+                self.sessions.append(session_id, &transcript).await?;
+                return Ok(response.content);
+            }
+
+            let assistant = ChatMessage::assistant_tool_calls(
+                response.content.clone(),
+                response.tool_calls.clone(),
+            );
+            messages.push(assistant.clone());
+            transcript.push(assistant);
+
+            for call in response.tool_calls {
+                let output = match self.execute_skill(&call.name, call.arguments.clone()).await {
+                    Ok(value) => value.to_string(),
+                    Err(e) => serde_json::json!({ "error": e.to_string() }).to_string(),
+                };
+                let result = ChatMessage::tool_result(&call.id, output);
+                messages.push(result.clone());
+                transcript.push(result);
+            }
+        }
+        Err(Error::Llm(format!(
+            "tool-calling loop did not converge within {max_rounds} rounds"
+        )))
     }
 
     /// Streaming variant of [`chat`](Self::chat): yields incremental
@@ -356,8 +466,85 @@ impl Agent {
         Ok(id)
     }
 
+    /// Embed and store several texts at once (batched embedding + batched
+    /// upsert). Returns the generated document ids, in input order.
+    pub async fn remember_batch(&self, texts: &[String], metadata: Value) -> Result<Vec<String>> {
+        let embeddings = self
+            .embeddings
+            .clone()
+            .ok_or(Error::NotConfigured("embedding provider"))?;
+        let store = self
+            .vector_store
+            .clone()
+            .ok_or(Error::NotConfigured("vector store"))?;
+        if texts.is_empty() {
+            return Ok(Vec::new());
+        }
+
+        let vectors = embeddings.embed_documents(texts).await?;
+        if vectors.len() != texts.len() {
+            return Err(Error::Llm(format!(
+                "embedding provider returned {} vectors for {} texts",
+                vectors.len(),
+                texts.len()
+            )));
+        }
+        let mut ids = Vec::with_capacity(texts.len());
+        let documents: Vec<Document> = texts
+            .iter()
+            .zip(vectors)
+            .map(|(text, vector)| {
+                let id = uuid::Uuid::new_v4().to_string();
+                ids.push(id.clone());
+                Document::new(id, vector)
+                    .with_text(text)
+                    .with_metadata(metadata.clone())
+            })
+            .collect();
+        store.upsert_batched(documents, 64).await?;
+        Ok(ids)
+    }
+
+    /// Chunk a long document (word-boundary chunks of `max_chars` with
+    /// `overlap` characters of carried context — see
+    /// [`chunk_text`](crate::vector::chunk_text)), then embed and store every
+    /// chunk. Each chunk's metadata gains a `_chunk` index.
+    pub async fn remember_document(
+        &self,
+        text: &str,
+        metadata: Value,
+        max_chars: usize,
+        overlap: usize,
+    ) -> Result<Vec<String>> {
+        let chunks = chunk_text(text, max_chars, overlap);
+        let mut ids = Vec::with_capacity(chunks.len());
+        for (index, chunk) in chunks.iter().enumerate() {
+            let mut chunk_metadata = metadata.clone();
+            if let Value::Object(map) = &mut chunk_metadata {
+                map.insert("_chunk".into(), Value::from(index));
+            }
+            ids.extend(
+                self.remember_batch(std::slice::from_ref(chunk), chunk_metadata)
+                    .await?,
+            );
+        }
+        Ok(ids)
+    }
+
     /// Embed `query` and return the `top_k` most similar remembered documents.
     pub async fn recall(&self, query: &str, top_k: usize) -> Result<Vec<SearchResult>> {
+        self.recall_filtered(query, top_k, &MetadataFilter::new())
+            .await
+    }
+
+    /// Like [`recall`](Self::recall), restricted to documents whose metadata
+    /// matches `filter`.
+    pub async fn recall_filtered(
+        &self,
+        query: &str,
+        top_k: usize,
+        filter: &MetadataFilter,
+    ) -> Result<Vec<SearchResult>> {
         let embeddings = self
             .embeddings
             .clone()
@@ -368,11 +555,24 @@ impl Agent {
             .ok_or(Error::NotConfigured("vector store"))?;
 
         let vector = embeddings.embed_query(query).await?;
-        store.search(vector, top_k).await
+        store.search_filtered(vector, top_k, filter).await
     }
 
     /// The configured vector store, when present.
     pub fn vector_store(&self) -> Option<Arc<dyn VectorStore>> {
         self.vector_store.clone()
+    }
+
+    /// Readiness flag served by `GET /ready` (liveness at `/health` is
+    /// always `ok`). Starts `true`; flip it while warming caches or draining
+    /// before shutdown.
+    pub fn set_ready(&self, ready: bool) {
+        self.ready
+            .store(ready, std::sync::atomic::Ordering::Relaxed);
+    }
+
+    /// Current readiness state.
+    pub fn is_ready(&self) -> bool {
+        self.ready.load(std::sync::atomic::Ordering::Relaxed)
     }
 }

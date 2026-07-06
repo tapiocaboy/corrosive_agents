@@ -2,9 +2,13 @@
 
 mod nvidia;
 mod types;
+mod usage;
 
-pub use nvidia::{models, NvidiaClient};
-pub use types::{ChatMessage, ChatRequest, ChatResponse, Role, StreamChunk, Usage};
+pub use nvidia::{models, NvidiaClient, RetryPolicy};
+pub use types::{
+    ChatMessage, ChatRequest, ChatResponse, Role, StreamChunk, ToolCall, ToolSpec, Usage,
+};
+pub use usage::{UsageEvent, UsageObserver, UsageSnapshot, UsageTotals};
 
 use futures_util::stream::BoxStream;
 

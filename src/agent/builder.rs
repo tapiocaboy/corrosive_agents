@@ -10,10 +10,10 @@ use crate::a2a::RemoteAgent;
 use crate::agent::{Agent, AgentManifest, Capability};
 use crate::error::{Error, Result};
 use crate::identity::AgentIdentity;
-use crate::llm::{EmbeddingProvider, LlmProvider};
+use crate::llm::{EmbeddingProvider, LlmProvider, UsageObserver, UsageTotals};
 use crate::mcp::McpServerConfig;
 use crate::session::{InMemorySessionStore, SessionStore};
-use crate::skills::{Skill, SkillRegistry};
+use crate::skills::{Skill, SkillPolicy, SkillRegistry};
 use crate::vector::VectorStore;
 
 /// Builds an [`Agent`] step by step.
@@ -44,8 +44,10 @@ pub struct AgentBuilder {
     embeddings: Option<Arc<dyn EmbeddingProvider>>,
     vector_store: Option<Arc<dyn VectorStore>>,
     skills: Vec<Arc<dyn Skill>>,
+    skill_policy: Option<SkillPolicy>,
     session_store: Option<Arc<dyn SessionStore>>,
     peers: HashMap<String, Arc<RemoteAgent>>,
+    usage_observer: Option<Arc<dyn UsageObserver>>,
 }
 
 impl AgentBuilder {
@@ -176,6 +178,24 @@ impl AgentBuilder {
         self
     }
 
+    /// Set the sandbox policy for skill execution (allowlist, permissions,
+    /// timeout). Defaults to [`SkillPolicy::default`]: every skill allowed,
+    /// no permissions granted, 30-second timeout.
+    #[must_use]
+    pub fn skill_policy(mut self, policy: SkillPolicy) -> Self {
+        self.skill_policy = Some(policy);
+        self
+    }
+
+    /// Receive a [`UsageEvent`](crate::llm::UsageEvent) after every
+    /// completion — for metrics, billing, or rate-limit dashboards. Plain
+    /// closures work: `.usage_observer(|e: &UsageEvent| println!("{e:?}"))`.
+    #[must_use]
+    pub fn usage_observer(mut self, observer: impl UsageObserver + 'static) -> Self {
+        self.usage_observer = Some(Arc::new(observer));
+        self
+    }
+
     /// Give the agent an existing identity. The manifest will be signed with
     /// it during [`build`](Self::build).
     #[must_use]
@@ -237,11 +257,15 @@ impl AgentBuilder {
             embeddings: self.embeddings,
             vector_store: self.vector_store,
             skills: registry,
+            skill_policy: self.skill_policy.unwrap_or_default(),
             mcp_clients: RwLock::new(HashMap::new()),
             sessions: self
                 .session_store
                 .unwrap_or_else(|| Arc::new(InMemorySessionStore::new())),
             peers: RwLock::new(self.peers),
+            usage_totals: Arc::new(UsageTotals::default()),
+            usage_observer: self.usage_observer,
+            ready: std::sync::atomic::AtomicBool::new(true),
         })
     }
 }

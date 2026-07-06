@@ -67,6 +67,10 @@ pub mod skills;
 pub mod trust;
 pub mod vector;
 
+#[cfg(any(feature = "server", feature = "grpc"))]
+#[cfg_attr(docsrs, doc(cfg(any(feature = "server", feature = "grpc"))))]
+pub mod auth;
+
 #[cfg(feature = "server")]
 #[cfg_attr(docsrs, doc(cfg(feature = "server")))]
 pub mod server;
@@ -74,6 +78,21 @@ pub mod server;
 #[cfg(feature = "grpc")]
 #[cfg_attr(docsrs, doc(cfg(feature = "grpc")))]
 pub mod grpc;
+
+#[cfg(feature = "tls")]
+#[cfg_attr(docsrs, doc(cfg(feature = "tls")))]
+pub mod tls;
+
+#[cfg(feature = "x509")]
+#[cfg_attr(docsrs, doc(cfg(feature = "x509")))]
+pub mod x509;
+
+/// The step-by-step tutorial: from an empty project to a production-shaped
+/// agent. Rendered from `docs/TUTORIAL.md`; its core code blocks are
+/// compile-checked as doctests.
+pub mod tutorial {
+    #![doc = include_str!("../docs/TUTORIAL.md")]
+}
 
 pub use agent::{Agent, AgentBuilder, AgentInfo, AgentManifest, Capability};
 pub use error::{Error, Result};
@@ -90,13 +109,23 @@ pub mod prelude {
     pub use crate::identity::AgentIdentity;
     pub use crate::llm::{
         models, ChatMessage, ChatRequest, ChatResponse, EmbeddingProvider, LlmProvider,
-        NvidiaClient, StreamChunk,
+        NvidiaClient, RetryPolicy, StreamChunk, ToolCall, ToolSpec, UsageEvent, UsageObserver,
+        UsageSnapshot,
     };
-    pub use crate::mcp::{McpClient, McpServerConfig, McpTool};
+    pub use crate::mcp::{McpClient, McpPrompt, McpResource, McpServerConfig, McpTool};
     pub use crate::session::{InMemorySessionStore, SessionStore};
-    pub use crate::skills::{FnSkill, Skill, SkillRegistry};
+    pub use crate::skills::{FnSkill, Skill, SkillPolicy, SkillRegistry};
     pub use crate::trust::{Revocation, RotationProof, TrustStore};
-    pub use crate::vector::{Document, InMemoryVectorStore, SearchResult, VectorStore};
+    pub use crate::vector::{
+        chunk_text, Document, InMemoryVectorStore, MetadataFilter, SearchResult, VectorStore,
+    };
+
+    #[cfg(any(feature = "server", feature = "grpc"))]
+    pub use crate::auth::{AuthScheme, JwksStore};
+    #[cfg(feature = "tls")]
+    pub use crate::tls::TlsConfig;
+    #[cfg(feature = "pgvector")]
+    pub use crate::vector::PgVectorStore;
 
     #[cfg(feature = "redis-sessions")]
     pub use crate::session::RedisSessionStore;

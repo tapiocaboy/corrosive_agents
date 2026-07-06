@@ -13,6 +13,7 @@ use crate::mcp::McpServerConfig;
 /// Capabilities are declarative metadata: they describe the agent to humans
 /// and other agents, and can carry free-form JSON configuration.
 #[derive(Debug, Clone, Serialize, Deserialize, PartialEq)]
+#[cfg_attr(feature = "openapi", derive(utoipa::ToSchema))]
 pub struct Capability {
     /// Machine-readable capability name, e.g. `"chat"` or `"rag"`.
     pub name: String,
@@ -24,6 +25,7 @@ pub struct Capability {
     pub enabled: bool,
     /// Optional free-form configuration for this capability.
     #[serde(default, skip_serializing_if = "Option::is_none")]
+    #[cfg_attr(feature = "openapi", schema(value_type = Option<Object>))]
     pub config: Option<serde_json::Value>,
 }
 
@@ -82,6 +84,7 @@ impl Capability {
 /// }
 /// ```
 #[derive(Debug, Clone, Default, Serialize, Deserialize, PartialEq)]
+#[cfg_attr(feature = "openapi", derive(utoipa::ToSchema))]
 pub struct AgentManifest {
     /// Agent name (required, non-empty).
     pub name: String,

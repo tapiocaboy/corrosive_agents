@@ -53,6 +53,7 @@ fn unix_now() -> u64 {
 
 /// A signed endorsement of a new key by the previous key.
 #[derive(Debug, Clone, Serialize, Deserialize, PartialEq)]
+#[cfg_attr(feature = "openapi", derive(utoipa::ToSchema))]
 pub struct RotationProof {
     /// Base64 public key being rotated away from.
     pub previous_key: String,

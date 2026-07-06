@@ -23,6 +23,7 @@ impl LlmProvider for EchoLlm {
         Ok(ChatResponse {
             content: format!("echo:{last_user}"),
             model: "echo".into(),
+            tool_calls: Vec::new(),
             usage: None,
         })
     }

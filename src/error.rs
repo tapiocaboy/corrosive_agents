@@ -48,6 +48,14 @@ pub enum Error {
     #[error("skill execution error: {0}")]
     Skill(String),
 
+    /// A skill (or other action) was refused by the active policy.
+    #[error("permission denied: {0}")]
+    PermissionDenied(String),
+
+    /// Authentication or authorization failed.
+    #[error("authentication error: {0}")]
+    Auth(String),
+
     /// Transport-layer serving failure (REST/WS/gRPC).
     #[error("server error: {0}")]
     Server(String),
