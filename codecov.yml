@@ -1,0 +1,30 @@
+# Codecov configuration — https://docs.codecov.com/docs/codecov-yaml
+#
+# Coverage is measured by the CI `coverage` job (cargo-llvm-cov over the
+# offline test suite). Network-bound modules (NVIDIA client, Qdrant/Pinecone/
+# pgvector backends, live transports) are exercised by examples and gated
+# integration tests rather than unit tests, so patch-level gating would
+# block routine PRs; keep patch informational and gate the project trend.
+
+coverage:
+  status:
+    project:
+      default:
+        target: auto      # compare against the base commit…
+        threshold: 2%     # …allowing small fluctuations
+    patch:
+      default:
+        informational: true   # report diff coverage, never fail the PR
+
+# Non-library code: never counted against coverage.
+ignore:
+  - "benches/**"
+  - "examples/**"
+  - "tests/**"
+  - "tools/**"
+  - "src/grpc/pb.rs"   # generated protobuf code (vendored)
+
+comment:
+  layout: "condensed_header, diff, flags, components"
+  behavior: default
+  require_changes: true # only comment when coverage actually changes

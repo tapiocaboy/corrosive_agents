@@ -315,7 +315,9 @@ let prompts = remote.list_prompts().await?;
 
 ## 8. Serving: REST, WebSocket, gRPC
 
-```rust,no_run
+```rust,ignore
+// feature `server` (on by default; marked ignore so the tutorial also
+// compiles under --no-default-features)
 use std::sync::Arc;
 use corrosive_agents::auth::AuthScheme;
 use corrosive_agents::prelude::*;
@@ -344,16 +346,14 @@ server::serve_with_auth(
 For an identity provider (Auth0, Keycloak, …), verify RS256 tokens against
 its JWKS instead of sharing a secret:
 
-```rust,no_run
+```rust,ignore
+// feature `server` (or `grpc`)
 use corrosive_agents::auth::{AuthScheme, JwksStore};
 
-# async fn run() -> corrosive_agents::Result<()> {
 let jwks = JwksStore::from_url("https://idp.example.com/.well-known/jwks.json").await?;
 let auth = AuthScheme::jwt_rs256(jwks)
     .with_issuer("https://idp.example.com/")
     .with_audience("corrosive-agents");
-# Ok(())
-# }
 ```
 
 (`JwksStore::refresh()` re-fetches keys — call it from a periodic task if

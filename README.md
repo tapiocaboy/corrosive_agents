@@ -41,14 +41,14 @@ from an empty project to a production-shaped agent, and ships on
 
 ```toml
 [dependencies]
-corrosive_agents = "0.1"            # REST + WebSocket by default
+corrosive_agents = "0.0.1"          # REST + WebSocket by default
 tokio = { version = "1", features = ["full"] }
 ```
 
 Optional features:
 
 ```toml
-corrosive_agents = { version = "0.1", features = ["full"] } # grpc + qdrant + pinecone
+corrosive_agents = { version = "0.0.1", features = ["full"] } # everything
 ```
 
 | Feature           | Default | Enables                                        |
