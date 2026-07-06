@@ -1,6 +1,6 @@
 [package]
 name = "corrosive_agents"
-version = "0.1.0"
+version = "0.0.1"
 edition = "2021"
 rust-version = "1.88"
 authors = ["Kalanamith <gayanworks@gmail.com>"]
@@ -102,9 +102,32 @@ redis = { version = "0.27", default-features = false, features = [
 
 [dev-dependencies]
 axum = { version = "0.8", features = ["ws"] }
+criterion = { version = "0.5", default-features = false, features = ["cargo_bench_support"] }
 dotenvy = "0.15"
 tracing-subscriber = "0.3"
 tokio = { version = "1", features = ["full"] }
+
+[[bench]]
+name = "vector_search"
+harness = false
+
+[[bench]]
+name = "manifest_verify"
+harness = false
+
+# cargo-release automation (https://github.com/crate-ci/cargo-release):
+# `cargo release patch` bumps the version, stamps CHANGELOG.md, commits,
+# tags vX.Y.Z, and pushes. Publishing to crates.io itself stays in CI —
+# it happens when the GitHub Release is published (see PUBLISHING.md).
+[package.metadata.release]
+allow-branch = ["main"]
+publish = false
+push = true
+tag-name = "v{{version}}"
+tag-message = "corrosive_agents v{{version}}"
+pre-release-replacements = [
+    { file = "CHANGELOG.md", search = "## \\[Unreleased\\]", replace = "## [Unreleased]\n\n## [{{version}}] - {{date}}", exactly = 1 },
+]
 
 [[example]]
 name = "build_agent"

@@ -22,7 +22,9 @@ struct McpIo {
 enum Transport {
     Stdio {
         io: Mutex<McpIo>,
-        child: Mutex<Child>,
+        // Boxed: tokio's Child is large, and Http must not pay for it
+        // (clippy::large_enum_variant).
+        child: Box<Mutex<Child>>,
     },
     Http {
         http: reqwest::Client,
@@ -99,7 +101,7 @@ impl McpClient {
                     stdin,
                     stdout: BufReader::new(stdout),
                 }),
-                child: Mutex::new(child),
+                child: Box::new(Mutex::new(child)),
             }
         };
 
