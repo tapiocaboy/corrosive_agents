@@ -1,0 +1,88 @@
+# A decentralised, multi-chain agent mesh on one user-defined bridge network.
+#
+# Each container gets its own local IP on the `mesh` bridge; libp2p mDNS
+# multicasts across that subnet so the agents *discover each other by local IP*
+# with no seed list or central registry. Coordination flows over gossipsub. The
+# `client` sends a signed question to the orchestrator; one specialist per
+# network reads its chain; the orchestrator returns a verified answer.
+#
+# A specialist's ROLE is the network it serves (a preset name). This compose
+# runs Solana testnet + two other Solana-like (SVM) chains + an EVM chain.
+#
+# Usage (run from this directory):
+#   docker compose up --build
+#   # ...watch the `sa-client` logs for the verified answer.
+#
+#   QUESTION="Compare the slots and genesis hashes of the networks." docker compose up --build
+#
+# NVIDIA_API_KEY is injected from the repository-root .env via `env_file`
+# (optional — without it the orchestrator returns the raw on-chain facts).
+
+x-build: &build
+  context: ../..
+  dockerfile: usecases/solana_agents/Dockerfile
+
+x-agent: &agent
+  build: *build
+  image: corrosive-solana-agents:latest
+  init: true
+  env_file:
+    - ../../.env
+  networks: [mesh]
+  restart: unless-stopped
+
+services:
+  orchestrator:
+    <<: *agent
+    container_name: sa-orchestrator
+    environment:
+      ROLE: orchestrator
+      NVIDIA_MODEL: ${NVIDIA_MODEL:-}
+      RUST_LOG: ${RUST_LOG:-info,solana_agents=info}
+
+  solana-testnet:
+    <<: *agent
+    container_name: sa-solana-testnet
+    depends_on: [orchestrator]
+    environment:
+      ROLE: solana-testnet
+      RUST_LOG: ${RUST_LOG:-info,solana_agents=info}
+
+  eclipse:
+    <<: *agent
+    container_name: sa-eclipse
+    depends_on: [orchestrator]
+    environment:
+      ROLE: eclipse
+      RUST_LOG: ${RUST_LOG:-info,solana_agents=info}
+
+  sonic-testnet:
+    <<: *agent
+    container_name: sa-sonic-testnet
+    depends_on: [orchestrator]
+    environment:
+      ROLE: sonic-testnet
+      RUST_LOG: ${RUST_LOG:-info,solana_agents=info}
+
+  ethereum:
+    <<: *agent
+    container_name: sa-ethereum
+    depends_on: [orchestrator]
+    environment:
+      ROLE: ethereum
+      RUST_LOG: ${RUST_LOG:-info,solana_agents=info}
+
+  client:
+    <<: *agent
+    container_name: sa-client
+    depends_on: [orchestrator, solana-testnet, eclipse, sonic-testnet, ethereum]
+    # The client asks once and exits; don't restart it.
+    restart: "no"
+    environment:
+      ROLE: client
+      QUESTION: ${QUESTION:-}
+      RUST_LOG: ${RUST_LOG:-info,solana_agents=info}
+
+networks:
+  mesh:
+    driver: bridge

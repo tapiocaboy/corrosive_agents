@@ -7,6 +7,19 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ## [Unreleased]
 
+## [0.0.4] - 2026-11-07
+
+### Added
+
+- On-chain agents use case (`usecases/solana_agents`): a `corrosive_agents`
+  agent integrated with **Solana and Solana-like (SVM)** networks — Solana
+  testnet/devnet/mainnet, Eclipse, Sonic — and **EVM** chains over JSON-RPC, as
+  both a single tool-calling agent (`solo`) and a decentralised libp2p mesh with
+  **one specialist per network** (client → orchestrator → per-chain specialists)
+  and Ed25519-signed messages. Each specialist reports its genesis hash / chain
+  id, so the mesh provably spans distinct networks. Shipped as a repo example,
+  excluded from the published crate via `Cargo.toml`.
+
 ## [0.0.3] - 2026-11-07
 
 ### Added
@@ -85,5 +98,7 @@ Initial release.
 - **Docs** — a step-by-step tutorial (`docs/TUTORIAL.md`), shipped on
   docs.rs as the `tutorial` module with compile-checked examples.
 
-[Unreleased]: https://github.com/tapiocaboy/corrosive_agents/compare/v0.0.1...HEAD
-[0.0.1]: https://github.com/tapiocaboy/corrosive_agents/releases/tag/v0.0.1
+[Unreleased]: https://github.com/tapiocaboy/corrosive_agents/compare/0.0.4...HEAD
+[0.0.4]: https://github.com/tapiocaboy/corrosive_agents/compare/0.0.3...0.0.4
+[0.0.3]: https://github.com/tapiocaboy/corrosive_agents/compare/0.0.1...0.0.3
+[0.0.1]: https://github.com/tapiocaboy/corrosive_agents/releases/tag/0.0.1
