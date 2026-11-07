@@ -39,6 +39,6 @@ pub trait EmbeddingProvider: Send + Sync {
     async fn embed_documents(&self, texts: &[String]) -> Result<Vec<Vec<f32>>>;
 
     /// Embed a search query. Kept separate because retrieval models such as
-    /// `nv-embedqa-e5-v5` embed queries and passages differently.
+    /// `nvidia/nemotron-3.5-embed-1b` embed queries and passages differently.
     async fn embed_query(&self, text: &str) -> Result<Vec<f32>>;
 }

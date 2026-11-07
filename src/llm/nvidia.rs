@@ -547,3 +547,50 @@ impl EmbeddingProvider for NvidiaClient {
             .ok_or_else(|| Error::Llm("embeddings response was empty".into()))
     }
 }
+
+#[cfg(test)]
+mod tests {
+    use super::*;
+
+    #[test]
+    fn new_uses_current_callable_defaults_and_hides_secret() {
+        let client = NvidiaClient::new("super-secret-key");
+        // Default chat model is a live, callable free id (see `models`).
+        assert_eq!(client.default_model(), models::NEMOTRON_35_BOLT_E4B);
+        // Debug exposes the default embedding model but never the API key.
+        let dbg = format!("{client:?}");
+        assert!(
+            dbg.contains(models::NEMOTRON_35_EMBED_1B),
+            "Debug should show the default embedding model, got: {dbg}"
+        );
+        assert!(
+            !dbg.contains("super-secret-key"),
+            "Debug must not leak the API key, got: {dbg}"
+        );
+    }
+
+    #[test]
+    fn builder_overrides_model_and_trims_base_url() {
+        let client = NvidiaClient::new("k")
+            .with_model(models::DEEPSEEK_V41_FLASH)
+            .with_embedding_model(models::NEMOTRON_35_EMBED_8B)
+            .with_base_url("http://localhost:8000/v1/")
+            .with_retry_policy(RetryPolicy::none());
+        assert_eq!(client.default_model(), models::DEEPSEEK_V41_FLASH);
+        let dbg = format!("{client:?}");
+        assert!(dbg.contains(models::NEMOTRON_35_EMBED_8B));
+        // The trailing slash on the base URL is trimmed.
+        assert!(dbg.contains("http://localhost:8000/v1"));
+        assert!(!dbg.contains("http://localhost:8000/v1/"));
+    }
+
+    #[test]
+    fn retry_delay_is_capped_and_honors_retry_after() {
+        let policy = RetryPolicy::default();
+        // Retry-After wins and is capped at max_delay.
+        let d = policy.delay_for(0, Some(Duration::from_secs(120)));
+        assert_eq!(d, policy.max_delay);
+        // Exponential backoff never exceeds max_delay, even at high attempts.
+        assert!(policy.delay_for(10, None) <= policy.max_delay);
+    }
+}

@@ -40,7 +40,7 @@ async fn main() -> Result<()> {
         .version("0.1.0")
         .description("Explains Rust concepts briefly")
         .system_prompt("You are a Rust tutor. Answer in at most four sentences.")
-        .model(models::NEMOTRON_3_NANO_30B)
+        .model(models::NEMOTRON_35_BOLT_E4B)
         .llm(NvidiaClient::from_env()?)
         .build()?;
 
@@ -82,7 +82,7 @@ Ship the agent's *shape* as data. Save as `agent.json`:
   "name": "tutor",
   "version": "1.0.0",
   "description": "Explains Rust concepts briefly",
-  "model": "nvidia/nemotron-3-nano-30b-a3b",
+  "model": "nvidia/nemotron-3.5-bolt-e4b",
   "system_prompt": "You are a Rust tutor.",
   "capabilities": [{ "name": "chat", "description": "Q&A" }],
   "skills": ["lookup_doc"],

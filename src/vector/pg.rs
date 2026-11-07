@@ -86,7 +86,7 @@ impl PgVectorStore {
 
     /// Install the `vector` extension and create the table + cosine index if
     /// they do not exist. `dimensions` must match your embedding model
-    /// (e.g. 1024 for `nv-embedqa-e5-v5`).
+    /// (e.g. 2048 for `nvidia/nemotron-3.5-embed-1b`).
     pub async fn ensure_table(&self, dimensions: usize) -> Result<()> {
         let table = &self.table;
         let ddl = format!(

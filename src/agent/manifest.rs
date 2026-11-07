@@ -72,7 +72,7 @@ impl Capability {
 ///   "name": "research-agent",
 ///   "version": "1.0.0",
 ///   "description": "Answers research questions",
-///   "model": "nvidia/llama-3.3-nemotron-super-49b-v1",
+///   "model": "nvidia/nemotron-3.5-bolt-e4b",
 ///   "system_prompt": "You are a concise research assistant.",
 ///   "capabilities": [
 ///     { "name": "chat", "description": "Conversational Q&A" }
@@ -96,7 +96,7 @@ pub struct AgentManifest {
     /// Declared capabilities.
     #[serde(default)]
     pub capabilities: Vec<Capability>,
-    /// Default LLM model id, e.g. `"nvidia/llama-3.3-nemotron-super-49b-v1"`.
+    /// Default LLM model id, e.g. `"nvidia/nemotron-3.5-bolt-e4b"`.
     #[serde(default, skip_serializing_if = "Option::is_none")]
     pub model: Option<String>,
     /// System prompt prepended to every conversation.
