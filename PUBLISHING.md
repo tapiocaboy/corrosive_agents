@@ -98,7 +98,7 @@ Then every release is just:
 # bumps Cargo.toml, stamps CHANGELOG.md, commits, tags vX.Y.Z, pushes:
 cargo release patch --execute     # or: minor / major / an explicit version
 # publish the release — THIS triggers the crates.io upload:
-gh release create v0.0.2 --generate-notes
+gh release create v0.0.3 --generate-notes
 ```
 
 (`cargo release` comes from [`cargo-release`](https://github.com/crate-ci/cargo-release):
@@ -109,8 +109,8 @@ Without the tool, bump the version and stamp CHANGELOG.md by hand:)
 
 ```sh
 # manual equivalent: edit Cargo.toml version + CHANGELOG.md, then
-git commit -am "Release v0.0.2" && git push
-gh release create v0.0.2 --generate-notes
+git commit -am "Release v0.0.3" && git push
+gh release create v0.0.3 --generate-notes
 ```
 
 (or draft and publish the release in the GitHub UI — the workflow fires on
