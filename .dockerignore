@@ -1,0 +1,21 @@
+# Build context hygiene for usecases/decentralised_agents/Dockerfile
+# (its build context is the repository root).
+
+# Rust build artifacts — never ship these into the image context.
+target
+**/target
+
+# VCS + local noise
+.git
+.gitignore
+.DS_Store
+.idea
+.vscode
+
+# Secrets: the API key is injected at runtime via env_file, never baked in.
+.env
+.env.*
+!.env.example
+
+# Large/irrelevant assets
+docs/architecture.png

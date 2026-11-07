@@ -1,0 +1,50 @@
+[package]
+name = "decentralised_agents"
+version = "0.1.0"
+edition = "2021"
+description = "Decentralised multi-agent mesh: libp2p mDNS discovery + gossipsub coordination over corrosive_agents + NVIDIA Nemotron."
+license = "MIT OR Apache-2.0"
+publish = false
+
+# This crate is its OWN workspace root. That deliberately keeps the heavy
+# libp2p dependency tree out of the published `corrosive_agents` crate and its
+# CI (cargo-deny / MSRV / packaging). The parent crate has no [workspace]
+# table, so it never pulls this in; we reach it only via a path dependency.
+[workspace]
+
+[dependencies]
+# The library under test — core only, no `server`/axum, to keep images lean.
+corrosive_agents = { path = "../..", default-features = false }
+
+# Peer-to-peer: local discovery (mDNS) + gossip (gossipsub) over TCP.
+libp2p = { version = "0.54", features = [
+    "tokio",
+    "gossipsub",
+    "mdns",
+    "noise",
+    "yamux",
+    "tcp",
+    "macros",
+] }
+
+tokio = { version = "1", features = [
+    "macros",
+    "rt-multi-thread",
+    "sync",
+    "time",
+    "io-std",
+    "io-util",
+    "signal",
+] }
+futures = "0.3"
+serde = { version = "1", features = ["derive"] }
+serde_json = "1"
+tracing = "0.1"
+tracing-subscriber = { version = "0.3", features = ["env-filter"] }
+dotenvy = "0.15"
+anyhow = "1"
+uuid = { version = "1", features = ["v4"] }
+
+[[bin]]
+name = "decentralised_agents"
+path = "src/main.rs"

@@ -11,3 +11,7 @@
 .vscode/
 .DS_Store
 tools/protogen/
+usecases/decentralised_agents/target/
+usecases/decentralised_agents/recordings/decentralised_mesh_6pane.gif
+usecases/decentralised_agents/recordings/decentralised_mesh_6pane.mp4
+qusecases/decentralised_agents/recordings/decentralised_mesh_narrated.mp

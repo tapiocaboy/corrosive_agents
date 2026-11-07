@@ -80,7 +80,7 @@ async fn main() -> Result<()> {
         .version("0.1.0")
         .description("A concise research assistant")
         .system_prompt("Answer in at most three sentences.")
-        .model(models::NEMOTRON_3_NANO_30B)
+        .model(models::NEMOTRON_35_BOLT_E4B)
         .capability(Capability::new("chat", "Conversational Q&A"))
         .llm(NvidiaClient::from_env()?)
         .generate_identity()          // manifest is signed at build()
@@ -98,7 +98,7 @@ async fn main() -> Result<()> {
 {
   "name": "manifest-agent",
   "version": "1.0.0",
-  "model": "nvidia/llama-3.3-nemotron-super-49b-v1",
+  "model": "nvidia/nemotron-3.5-bolt-e4b",
   "capabilities": [{ "name": "chat", "description": "Conversational Q&A" }],
   "skills": ["word_count"],
   "mcp_servers": [
@@ -216,18 +216,31 @@ methods: `upsert`, `search`, `delete`).
 
 All LLM examples need `NVIDIA_API_KEY` (or `NVIDIA_KEY` in a `.env` file).
 
-## Nemotron models
+## NVIDIA NIM models
 
-Constants in `corrosive_agents::llm::models`, all usable with a free key:
+Constants in `corrosive_agents::llm::models`, callable with a free key
+(verified 2026-11-07):
 
-- `nvidia/nemotron-3-ultra-550b-a55b`, `nvidia/nemotron-3-super-120b-a12b`,
-  `nvidia/nemotron-3-nano-30b-a3b` (default)
-- `nvidia/llama-3.1-nemotron-ultra-253b-v1`, `nvidia/llama-3.3-nemotron-super-49b-v1`,
-  `nvidia/llama-3.1-nemotron-nano-8b-v1`, `nvidia/nemotron-mini-4b-instruct`
-- Embeddings: `nvidia/nv-embedqa-e5-v5`, `nvidia/llama-nemotron-embed-1b-v2`
+- Chat: `nvidia/nemotron-3.5-bolt-e4b` (default — fast, returns content
+  directly), `nvidia/nemotron-3.5-lightning-30b-a3b`,
+  `nvidia/nemotron-3.5-super-vl-120b-a12b`, `deepseek-ai/deepseek-v4.1-flash`,
+  `minimaxai/minimax-m3.1-flash`
+- Embeddings: `nvidia/nemotron-3.5-embed-1b` (default, 2048 dims),
+  `nvidia/nemotron-3.5-embed-8b` (4096 dims)
 
-The catalog evolves — list what your key can reach with
-`GET https://integrate.api.nvidia.com/v1/models`.
+The catalog drifts and **most listed ids `404` on any given key — a listing is
+not an entitlement**. List what your key can see with
+`GET https://integrate.api.nvidia.com/v1/models`, then confirm one actually
+answers before relying on it:
+
+```sh
+curl https://integrate.api.nvidia.com/v1/chat/completions \
+  -H "Authorization: Bearer $NVIDIA_API_KEY" -H "Content-Type: application/json" \
+  -d '{"model":"nvidia/nemotron-3.5-bolt-e4b","messages":[{"role":"user","content":"hi"}],"max_tokens":16}'
+```
+
+Older ids (`nemotron-3-*`, `llama-*-nemotron-*`, `nv-embedqa-e5-v5`, …) reached
+end-of-life upstream; their constants remain but are `#[deprecated]`.
 
 ## Development
 

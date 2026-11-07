@@ -1,0 +1,91 @@
+# Six lightweight agent containers on one user-defined bridge network.
+#
+# Each container gets its own local IP on the `mesh` bridge; libp2p mDNS
+# multicasts across that subnet so the agents *discover each other by local
+# IP* with no seed list or central registry. Coordination then flows over
+# gossipsub. The `client` sends a signed request to the orchestrator and
+# prints the verified final answer.
+#
+# Usage (run from this directory):
+#   docker compose up --build
+#   # ...watch the `client` logs for the final answer, any pane for the trace.
+#
+# Ask your own question:
+#   QUESTION="Explain CRDTs to a backend engineer" docker compose up --build
+#
+# NVIDIA_API_KEY is injected from the repository-root .env via `env_file`.
+
+# Shared build + base config. All six containers run the same image; only
+# the ROLE differs.
+x-build: &build
+  context: ../..
+  dockerfile: usecases/decentralised_agents/Dockerfile
+
+x-agent: &agent
+  build: *build
+  image: corrosive-decentralised:latest
+  init: true
+  env_file:
+    - ../../.env
+  networks: [mesh]
+  restart: unless-stopped
+
+services:
+  router:
+    <<: *agent
+    container_name: ca-router
+    environment:
+      ROLE: router
+      NVIDIA_MODEL: ${NVIDIA_MODEL:-}
+      RUST_LOG: ${RUST_LOG:-info,decentralised_agents=info}
+
+  qna:
+    <<: *agent
+    container_name: ca-qna
+    depends_on: [router]
+    environment:
+      ROLE: qna
+      NVIDIA_MODEL: ${NVIDIA_MODEL:-}
+      RUST_LOG: ${RUST_LOG:-info,decentralised_agents=info}
+
+  reasoning:
+    <<: *agent
+    container_name: ca-reasoning
+    depends_on: [router]
+    environment:
+      ROLE: reasoning
+      NVIDIA_MODEL: ${NVIDIA_MODEL:-}
+      RUST_LOG: ${RUST_LOG:-info,decentralised_agents=info}
+
+  synthesizer:
+    <<: *agent
+    container_name: ca-synthesizer
+    depends_on: [router]
+    environment:
+      ROLE: synthesizer
+      NVIDIA_MODEL: ${NVIDIA_MODEL:-}
+      RUST_LOG: ${RUST_LOG:-info,decentralised_agents=info}
+
+  orchestrator:
+    <<: *agent
+    container_name: ca-orchestrator
+    depends_on: [router, qna, reasoning, synthesizer]
+    environment:
+      ROLE: orchestrator
+      NVIDIA_MODEL: ${NVIDIA_MODEL:-}
+      RUST_LOG: ${RUST_LOG:-info,decentralised_agents=info}
+
+  client:
+    <<: *agent
+    container_name: ca-client
+    depends_on: [orchestrator]
+    # The client asks once and exits; don't restart it.
+    restart: "no"
+    environment:
+      ROLE: client
+      QUESTION: ${QUESTION:-}
+      RUST_LOG: ${RUST_LOG:-info,decentralised_agents=info}
+
+networks:
+  mesh:
+    driver: bridge

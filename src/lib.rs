@@ -1,5 +1,9 @@
 #![warn(missing_docs)]
 #![cfg_attr(docsrs, feature(doc_cfg))]
+// `#[async_trait]` expands each `async fn` to a method returning a boxed
+// future (already `#[must_use]`) and tags it `#[must_use]` too; clippy 1.99+
+// flags that as `double_must_use` on macro-generated code we don't control.
+#![allow(clippy::double_must_use)]
 
 //! # corrosive_agents
 //!
@@ -36,7 +40,7 @@
 //!     .version("0.1.0")
 //!     .description("Answers research questions")
 //!     .capability(Capability::new("chat", "Conversational Q&A"))
-//!     .llm(NvidiaClient::from_env()?.with_model(models::LLAMA_NEMOTRON_SUPER_49B))
+//!     .llm(NvidiaClient::from_env()?.with_model(models::NEMOTRON_35_LIGHTNING_30B))
 //!     .generate_identity()
 //!     .build()?;
 //!

@@ -1,0 +1,206 @@
+// corrosive_agents — architecture diagram
+// Render:  dot -Tpng -Gdpi=140 docs/architecture.dot -o docs/architecture.png
+digraph corrosive_agents {
+  rankdir=TB;
+  compound=true;
+  newrank=true;
+  splines=spline;
+  nodesep=0.30;
+  ranksep=0.60;
+  bgcolor="#ffffff";
+  fontname="Helvetica";
+  labelloc="t";
+  fontsize=20;
+  label=<<b>corrosive_agents</b> &#8212; verifiable, interactive AI agents on NVIDIA Nemotron<br/><font point-size="11" color="#64748b">v0.0.1 &#183; crate architecture</font><br/> >;
+
+  node [shape=box, style="rounded,filled", fontname="Helvetica", fontsize=11,
+        color="#cbd5e1", penwidth=1.2, margin="0.16,0.10"];
+  edge [color="#94a3b8", fontname="Helvetica", fontsize=9, arrowsize=0.7];
+
+  // ───────────────────────── callers ─────────────────────────
+  subgraph cluster_clients {
+    label=<<b>Callers</b>>;
+    fontsize=13; fontcolor="#475569";
+    style="rounded,filled"; fillcolor="#f8fafc"; color="#e2e8f0";
+
+    rest_client  [label="HTTP / REST\nclient",  fillcolor="#e0f2fe", color="#7dd3fc"];
+    ws_client    [label="WebSocket\nclient",    fillcolor="#e0f2fe", color="#7dd3fc"];
+    grpc_client  [label="gRPC\nclient",         fillcolor="#e0f2fe", color="#7dd3fc"];
+    embed_user   [label="Embedded use\n(library / examples)", fillcolor="#e0f2fe", color="#7dd3fc"];
+
+    { rank=same; rest_client; ws_client; grpc_client; embed_user; }
+  }
+
+  // ──────────────────── transport + security ────────────────────
+  subgraph cluster_transport {
+    label=<<b>Transport &amp; security</b>  <font point-size="10" color="#64748b">features: server · grpc · tls · openapi</font>>;
+    fontsize=13; fontcolor="#475569";
+    style="rounded,filled"; fillcolor="#fefce8"; color="#fde68a";
+
+    auth [label=<<b>auth::AuthScheme</b><br/><font point-size="9">ApiKeys · JWT HS256 · JWT RS256 (JwksStore)</font>>,
+          fillcolor="#fef3c7", color="#fbbf24"];
+    tls  [label=<<b>tls::TlsConfig</b><br/><font point-size="9">rustls · axum-server / tonic</font>>,
+          fillcolor="#fef3c7", color="#fbbf24"];
+
+    rest [label=<<b>server::rest</b> &#8212; axum Router<br/>
+      <font point-size="9" color="#475569">public&#160;&#160;/health · /ready · /openapi.json</font><br/>
+      <font point-size="9" color="#475569">guarded&#160;/agent · /agent/manifest · /capabilities</font><br/>
+      <font point-size="9" color="#475569">/skills · /skills/{name} · /chat · /verify</font>>,
+      fillcolor="#fffbeb", color="#f59e0b"];
+
+    ws   [label=<<b>server::ws</b><br/><font point-size="9">GET /ws &#8212; token streaming</font>>,
+      fillcolor="#fffbeb", color="#f59e0b"];
+
+    grpc [label=<<b>grpc::AgentGrpcService</b> &#8212; tonic<br/>
+      <font point-size="9" color="#475569">GetInfo · Chat · ChatStream · ExecuteSkill</font>>,
+      fillcolor="#fffbeb", color="#f59e0b"];
+
+    { rank=same; auth; tls; }
+    { rank=same; rest; ws; grpc; }
+  }
+
+  // ───────────────────────── core ─────────────────────────
+  subgraph cluster_core {
+    label=<<b>Core</b>>;
+    fontsize=13; fontcolor="#475569";
+    style="rounded,filled"; fillcolor="#fff7ed"; color="#fed7aa";
+
+    builder [label=<<b>AgentBuilder</b><br/><font point-size="9">agent::builder &#183; fluent assembly</font>>,
+             fillcolor="#ffedd5", color="#fb923c"];
+
+    manifest [label=<<b>AgentManifest</b><br/>
+      <font point-size="9" color="#475569">name · version · capabilities</font><br/>
+      <font point-size="9" color="#475569">skills · mcp_servers &#183; JSON</font>>,
+      fillcolor="#ffedd5", color="#fb923c"];
+
+    agent [shape=box, penwidth=2.4, fillcolor="#ffedd5", color="#ea580c",
+      label=<<b><font point-size="15">Agent</font></b>  <font point-size="9" color="#7c2d12">agent::runtime &#183; Arc&lt;Agent&gt;</font><br/>
+        <font point-size="9" color="#475569">chat · chat_with_tools · chat_stream · execute_skill</font><br/>
+        <font point-size="9" color="#475569">remember / recall · delegate_chat / delegate_skill</font><br/>
+        <font point-size="9" color="#475569">verify · usage · set_ready</font>>];
+
+    { rank=same; builder; manifest; }
+  }
+
+  // ──────────────────────── subsystems ────────────────────────
+  subgraph cluster_sub {
+    label=<<b>Subsystems</b>>;
+    fontsize=13; fontcolor="#475569";
+    style="rounded,filled"; fillcolor="#f5f3ff"; color="#ddd6fe";
+
+    llm [label=<<b>llm</b><br/>
+      <font point-size="9" color="#475569">LlmProvider · EmbeddingProvider</font><br/>
+      <font point-size="9" color="#475569">NvidiaClient · RetryPolicy · ToolSpec</font>>,
+      fillcolor="#ede9fe", color="#a78bfa"];
+
+    skills [label=<<b>skills</b><br/>
+      <font point-size="9" color="#475569">Skill trait · FnSkill</font><br/>
+      <font point-size="9" color="#475569">SkillRegistry · SkillPolicy</font>>,
+      fillcolor="#ede9fe", color="#a78bfa"];
+
+    mcp [label=<<b>mcp</b><br/>
+      <font point-size="9" color="#475569">McpClient · Tool / Resource / Prompt</font><br/>
+      <font point-size="9" color="#475569">stdio JSON-RPC · streamable HTTP/SSE</font>>,
+      fillcolor="#ede9fe", color="#a78bfa"];
+
+    vector [label=<<b>vector</b><br/>
+      <font point-size="9" color="#475569">VectorStore trait · Document</font><br/>
+      <font point-size="9" color="#475569">chunk_text · MetadataFilter</font>>,
+      fillcolor="#ede9fe", color="#a78bfa"];
+
+    session [label=<<b>session</b><br/>
+      <font point-size="9" color="#475569">SessionStore trait</font><br/>
+      <font point-size="9" color="#475569">conversation history</font>>,
+      fillcolor="#ede9fe", color="#a78bfa"];
+
+    a2a [label=<<b>a2a</b><br/>
+      <font point-size="9" color="#475569">RemoteAgent</font><br/>
+      <font point-size="9" color="#475569">info · manifest · verify · chat · skill</font>>,
+      fillcolor="#ede9fe", color="#a78bfa"];
+
+    trust [label=<<b>identity · trust · x509</b><br/>
+      <font point-size="9" color="#475569">AgentIdentity (Ed25519 sign / verify)</font><br/>
+      <font point-size="9" color="#475569">TrustStore · RotationProof · Revocation</font>>,
+      fillcolor="#dcfce7", color="#4ade80"];
+
+    usage [label=<<b>llm::usage</b><br/>
+      <font point-size="9" color="#475569">UsageObserver · UsageSnapshot</font>>,
+      fillcolor="#ede9fe", color="#a78bfa"];
+
+    { rank=same; llm; usage; skills; mcp; vector; session; a2a; trust; }
+  }
+
+  // ────────────────────── external systems ──────────────────────
+  subgraph cluster_ext {
+    label=<<b>External systems</b>>;
+    fontsize=13; fontcolor="#475569";
+    style="rounded,filled"; fillcolor="#f8fafc"; color="#e2e8f0";
+
+    node [shape=box, style="rounded,filled,dashed", fillcolor="#f1f5f9", color="#94a3b8"];
+
+    nim [label=<<b>NVIDIA NIM</b><br/>
+      <font point-size="9" color="#475569">integrate.api.nvidia.com/v1</font><br/>
+      <font point-size="9" color="#475569">Nemotron chat · stream · embeddings</font>>];
+
+    mcpsrv [label=<<b>MCP servers</b><br/>
+      <font point-size="9" color="#475569">child process (stdio)</font><br/>
+      <font point-size="9" color="#475569">or HTTP endpoint</font>>];
+
+    vdb [label=<<b>Vector backends</b><br/>
+      <font point-size="9" color="#475569">InMemory · Pinecone</font><br/>
+      <font point-size="9" color="#475569">Qdrant · pgvector</font>>];
+
+    sdb [label=<<b>Session backends</b><br/>
+      <font point-size="9" color="#475569">InMemory · SQLite · Redis</font>>];
+
+    peers [label=<<b>Peer agents</b><br/>
+      <font point-size="9" color="#475569">another corrosive_agents</font><br/>
+      <font point-size="9" color="#475569">REST server</font>>];
+
+    { rank=same; nim; mcpsrv; vdb; sdb; peers; }
+  }
+
+  // ───────────────────────── edges ─────────────────────────
+  // callers → transports
+  rest_client -> rest;
+  ws_client   -> ws;
+  grpc_client -> grpc;
+  embed_user  -> builder [style=dashed, label=" build"];
+
+  // security wraps the transports
+  auth -> rest [style=dotted, label=" middleware", color="#f59e0b", constraint=false];
+  auth -> grpc [style=dotted, color="#f59e0b", constraint=false];
+  tls  -> rest [style=dotted, label=" wraps", color="#f59e0b", constraint=false];
+  tls  -> grpc [style=dotted, color="#f59e0b", constraint=false];
+
+  // transports → core
+  rest -> agent [penwidth=1.7, color="#ea580c"];
+  ws   -> agent [penwidth=1.7, color="#ea580c"];
+  grpc -> agent [penwidth=1.7, color="#ea580c"];
+
+  builder  -> agent [label=" build()"];
+  manifest -> agent [style=dashed, label=" loads"];
+
+  // core → subsystems
+  agent -> llm;
+  agent -> skills;
+  agent -> mcp;
+  agent -> vector;
+  agent -> session;
+  agent -> a2a;
+  agent -> trust [color="#16a34a"];
+  agent -> usage [style=dashed];
+
+  // subsystem ↔ subsystem
+  skills -> mcp  [style=dashed, label="tool calls", constraint=false];
+  vector -> llm  [style=dashed, label="embed", constraint=false];
+  llm    -> usage [style=dashed, label="tokens", constraint=false, weight=20];
+
+  // subsystems → external
+  llm     -> nim    [label=" HTTPS"];
+  mcp     -> mcpsrv [label=" JSON-RPC"];
+  vector  -> vdb;
+  session -> sdb;
+  a2a     -> peers  [label=" REST"];
+  trust   -> peers  [style=dashed, label=" verify signature", color="#16a34a"];
+}

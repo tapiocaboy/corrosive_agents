@@ -19,7 +19,7 @@ async fn main() -> Result<()> {
         .version("0.1.0")
         .description("A concise research assistant")
         .system_prompt("You are a concise research assistant. Answer in at most three sentences.")
-        .model(models::NEMOTRON_3_NANO_30B)
+        .model(models::NEMOTRON_35_BOLT_E4B)
         .capability(Capability::new("chat", "Conversational Q&A"))
         .capability(
             Capability::new("summarize", "Summarizes text")
