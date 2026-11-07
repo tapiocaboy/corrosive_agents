@@ -11,7 +11,7 @@ documentation = "https://docs.rs/corrosive_agents"
 readme = "README.md"
 keywords = ["agent", "llm", "nemotron", "mcp", "ai"]
 categories = ["asynchronous", "api-bindings", "web-programming"]
-exclude = [".env", ".github/", "TODO.md", "tools/"]
+exclude = [".env", ".github/", "TODO.md", "tools/", "usecases/", ".dockerignore"]
 
 [features]
 default = ["server"]

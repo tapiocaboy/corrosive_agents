@@ -36,7 +36,7 @@
 //!     .version("0.1.0")
 //!     .description("Answers research questions")
 //!     .capability(Capability::new("chat", "Conversational Q&A"))
-//!     .llm(NvidiaClient::from_env()?.with_model(models::LLAMA_NEMOTRON_SUPER_49B))
+//!     .llm(NvidiaClient::from_env()?.with_model(models::NEMOTRON_35_LIGHTNING_30B))
 //!     .generate_identity()
 //!     .build()?;
 //!

@@ -19,7 +19,7 @@ async fn main() -> Result<()> {
             "You are a precise assistant. Use the provided tools for any arithmetic; \
              never compute it yourself.",
         )
-        .model(models::LLAMA_NEMOTRON_SUPER_49B)
+        .model(models::NEMOTRON_35_LIGHTNING_30B)
         .skill(
             FnSkill::new(
                 "multiply",

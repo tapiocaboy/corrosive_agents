@@ -19,13 +19,13 @@ async fn main() -> Result<()> {
         .name("repl-agent")
         .version("0.1.0")
         .system_prompt("You are a friendly, concise assistant.")
-        .llm(NvidiaClient::from_env()?.with_model(models::NEMOTRON_3_NANO_30B))
+        .llm(NvidiaClient::from_env()?.with_model(models::NEMOTRON_35_BOLT_E4B))
         .build()?;
 
     println!(
         "Interactive chat with {} (model: {})",
         agent.name(),
-        models::NEMOTRON_3_NANO_30B
+        models::NEMOTRON_35_BOLT_E4B
     );
     println!("Type a message and press Enter. Ctrl-D or 'exit' to quit.\n");
 

@@ -26,28 +26,76 @@ use crate::llm::{EmbeddingProvider, LlmProvider};
 
 /// Well-known NVIDIA NIM model ids usable with a free build.nvidia.com key.
 ///
-/// The catalog evolves; list what your key can reach with
-/// `GET https://integrate.api.nvidia.com/v1/models`.
+/// NVIDIA's catalog evolves quickly: models reach end-of-life and new ones
+/// appear, and `GET /v1/models` lists the *global* catalog, not what your key
+/// is entitled to call. **A listing is not an entitlement** — most listed ids
+/// return `404 "Not found for account"` (or `410` once retired). The ids below
+/// were verified callable on a free key on **2026-11-07**; always confirm with
+/// a real completion before relying on one:
+///
+/// ```sh
+/// curl https://integrate.api.nvidia.com/v1/chat/completions \
+///   -H "Authorization: Bearer $NVIDIA_API_KEY" -H "Content-Type: application/json" \
+///   -d '{"model":"<id>","messages":[{"role":"user","content":"hi"}],"max_tokens":16}'
+/// ```
 pub mod models {
-    /// Nemotron 3 Ultra 550B (MoE) — flagship reasoning model.
-    pub const NEMOTRON_3_ULTRA_550B: &str = "nvidia/nemotron-3-ultra-550b-a55b";
-    /// Nemotron 3 Super 120B (MoE) — strong quality/speed balance.
-    pub const NEMOTRON_3_SUPER_120B: &str = "nvidia/nemotron-3-super-120b-a12b";
-    /// Nemotron 3 Nano 30B (MoE) — fast, efficient default.
+    // --- Chat models (verified callable on a free key, 2026-11-07) ---
+
+    /// Nemotron 3.5 Bolt E4B — fast, lightweight model that returns its answer
+    /// directly in `message.content`. The crate default chat model.
+    pub const NEMOTRON_35_BOLT_E4B: &str = "nvidia/nemotron-3.5-bolt-e4b";
+    /// Nemotron 3.5 Lightning 30B (MoE) — reasoning model with a strong
+    /// quality/speed balance (emits `reasoning_content`; see the note below).
+    pub const NEMOTRON_35_LIGHTNING_30B: &str = "nvidia/nemotron-3.5-lightning-30b-a3b";
+    /// Nemotron 3.5 Super VL 120B (MoE) — large vision-language reasoning model.
+    pub const NEMOTRON_35_SUPER_VL_120B: &str = "nvidia/nemotron-3.5-super-vl-120b-a12b";
+    /// DeepSeek V4.1 Flash — fast general-purpose chat model.
+    pub const DEEPSEEK_V41_FLASH: &str = "deepseek-ai/deepseek-v4.1-flash";
+    /// MiniMax M3.1 Flash — fast general-purpose chat model.
+    pub const MINIMAX_M31_FLASH: &str = "minimaxai/minimax-m3.1-flash";
+
+    // --- Embedding models (verified callable on a free key, 2026-11-07) ---
+
+    /// Nemotron 3.5 Embed 1B — retrieval embeddings (2048 dims). The crate
+    /// default embedding model; use for RAG.
+    pub const NEMOTRON_35_EMBED_1B: &str = "nvidia/nemotron-3.5-embed-1b";
+    /// Nemotron 3.5 Embed 8B — higher-quality retrieval embeddings (4096 dims).
+    pub const NEMOTRON_35_EMBED_8B: &str = "nvidia/nemotron-3.5-embed-8b";
+
+    // --- Retired ids (kept so older code still compiles) ---
+    //
+    // These reached end-of-life on NVIDIA NIM and now return 404/410 on every
+    // key. Migrate to one of the live ids above.
+
+    /// Deprecated: retired on NVIDIA NIM. Use [`NEMOTRON_35_LIGHTNING_30B`].
+    #[deprecated(note = "retired on NVIDIA NIM (404/410); use NEMOTRON_35_LIGHTNING_30B")]
     pub const NEMOTRON_3_NANO_30B: &str = "nvidia/nemotron-3-nano-30b-a3b";
-    /// Nemotron Nano 9B v2 — lightweight hybrid-Mamba model.
-    pub const NEMOTRON_NANO_9B_V2: &str = "nvidia/nvidia-nemotron-nano-9b-v2";
-    /// Llama 3.1 Nemotron Ultra 253B — high-quality reasoning.
-    pub const LLAMA_NEMOTRON_ULTRA_253B: &str = "nvidia/llama-3.1-nemotron-ultra-253b-v1";
-    /// Llama 3.3 Nemotron Super 49B.
+    /// Deprecated: retired on NVIDIA NIM. Use [`NEMOTRON_35_SUPER_VL_120B`].
+    #[deprecated(note = "retired on NVIDIA NIM (404/410); use NEMOTRON_35_SUPER_VL_120B")]
+    pub const NEMOTRON_3_SUPER_120B: &str = "nvidia/nemotron-3-super-120b-a12b";
+    /// Deprecated: retired on NVIDIA NIM. Use [`NEMOTRON_35_SUPER_VL_120B`].
+    #[deprecated(note = "retired on NVIDIA NIM (404/410); use NEMOTRON_35_SUPER_VL_120B")]
+    pub const NEMOTRON_3_ULTRA_550B: &str = "nvidia/nemotron-3-ultra-550b-a55b";
+    /// Deprecated: retired on NVIDIA NIM. Use [`NEMOTRON_35_LIGHTNING_30B`].
+    #[deprecated(note = "retired on NVIDIA NIM (404/410); use NEMOTRON_35_LIGHTNING_30B")]
     pub const LLAMA_NEMOTRON_SUPER_49B: &str = "nvidia/llama-3.3-nemotron-super-49b-v1";
-    /// Llama 3.1 Nemotron Nano 8B — fast and lightweight.
+    /// Deprecated: retired on NVIDIA NIM. Use [`NEMOTRON_35_SUPER_VL_120B`].
+    #[deprecated(note = "retired on NVIDIA NIM (404/410); use NEMOTRON_35_SUPER_VL_120B")]
+    pub const LLAMA_NEMOTRON_ULTRA_253B: &str = "nvidia/llama-3.1-nemotron-ultra-253b-v1";
+    /// Deprecated: retired on NVIDIA NIM. Use [`NEMOTRON_35_BOLT_E4B`].
+    #[deprecated(note = "retired on NVIDIA NIM (404/410); use NEMOTRON_35_BOLT_E4B")]
     pub const LLAMA_NEMOTRON_NANO_8B: &str = "nvidia/llama-3.1-nemotron-nano-8b-v1";
-    /// Nemotron Mini 4B Instruct — smallest, edge-friendly.
+    /// Deprecated: retired on NVIDIA NIM. Use [`NEMOTRON_35_BOLT_E4B`].
+    #[deprecated(note = "retired on NVIDIA NIM (404/410); use NEMOTRON_35_BOLT_E4B")]
     pub const NEMOTRON_MINI_4B: &str = "nvidia/nemotron-mini-4b-instruct";
-    /// Retrieval embedding model (1024 dims); use for RAG.
+    /// Deprecated: retired on NVIDIA NIM. Use [`NEMOTRON_35_BOLT_E4B`].
+    #[deprecated(note = "retired on NVIDIA NIM (404/410); use NEMOTRON_35_BOLT_E4B")]
+    pub const NEMOTRON_NANO_9B_V2: &str = "nvidia/nvidia-nemotron-nano-9b-v2";
+    /// Deprecated: retired on NVIDIA NIM. Use [`NEMOTRON_35_EMBED_1B`].
+    #[deprecated(note = "retired on NVIDIA NIM (404/410); use NEMOTRON_35_EMBED_1B")]
     pub const EMBED_QA_E5_V5: &str = "nvidia/nv-embedqa-e5-v5";
-    /// Llama Nemotron Embed 1B v2 — newer retrieval embedding model.
+    /// Deprecated: retired on NVIDIA NIM. Use [`NEMOTRON_35_EMBED_1B`].
+    #[deprecated(note = "retired on NVIDIA NIM (404/410); use NEMOTRON_35_EMBED_1B")]
     pub const NEMOTRON_EMBED_1B_V2: &str = "nvidia/llama-nemotron-embed-1b-v2";
 }
 
@@ -134,8 +182,8 @@ impl NvidiaClient {
             http,
             api_key: api_key.into(),
             base_url: DEFAULT_BASE_URL.to_string(),
-            model: models::NEMOTRON_3_NANO_30B.to_string(),
-            embedding_model: models::EMBED_QA_E5_V5.to_string(),
+            model: models::NEMOTRON_35_BOLT_E4B.to_string(),
+            embedding_model: models::NEMOTRON_35_EMBED_1B.to_string(),
             retry: RetryPolicy::default(),
         }
     }
