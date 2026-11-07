@@ -209,3 +209,54 @@ pub struct StreamChunk {
     /// `true` on the final chunk of the stream.
     pub done: bool,
 }
+
+#[cfg(test)]
+mod tests {
+    use super::*;
+    use serde_json::json;
+
+    #[test]
+    fn chat_message_constructors() {
+        assert_eq!(ChatMessage::system("s").role, Role::System);
+        assert_eq!(ChatMessage::user("u").role, Role::User);
+        assert_eq!(ChatMessage::assistant("a").role, Role::Assistant);
+
+        let calls = vec![ToolCall {
+            id: "1".into(),
+            name: "t".into(),
+            arguments: json!({ "x": 1 }),
+        }];
+        let m = ChatMessage::assistant_tool_calls("", calls);
+        assert_eq!(m.tool_calls.as_ref().unwrap().len(), 1);
+
+        let r = ChatMessage::tool_result("1", "out");
+        assert_eq!(r.role, Role::Tool);
+        assert_eq!(r.tool_call_id.as_deref(), Some("1"));
+    }
+
+    #[test]
+    fn chat_request_builders() {
+        let req = ChatRequest::new(vec![ChatMessage::user("hi")])
+            .with_model("m")
+            .with_temperature(0.1)
+            .with_max_tokens(128)
+            .with_tools(vec![ToolSpec {
+                name: "t".into(),
+                description: "d".into(),
+                parameters: json!({}),
+            }]);
+        assert_eq!(req.model.as_deref(), Some("m"));
+        assert_eq!(req.temperature, Some(0.1));
+        assert_eq!(req.max_tokens, Some(128));
+        assert_eq!(req.tools.unwrap().len(), 1);
+    }
+
+    #[test]
+    fn tool_spec_from_skill() {
+        use crate::skills::FnSkill;
+        let skill = FnSkill::new("name", "desc", |i| async move { Ok(i) });
+        let spec = ToolSpec::from_skill(&skill);
+        assert_eq!(spec.name, "name");
+        assert_eq!(spec.description, "desc");
+    }
+}

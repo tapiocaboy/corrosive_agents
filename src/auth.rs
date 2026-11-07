@@ -540,6 +540,54 @@ mod tests {
             .is_err());
     }
 
+    #[test]
+    fn jwt_requires_bearer_credentials() {
+        let auth = AuthScheme::jwt_hs256("s");
+        assert!(auth.authorize(None, None).is_err()); // nothing sent
+        assert!(auth.authorize(Some("Token abc"), None).is_err()); // not "Bearer …"
+    }
+
+    #[test]
+    fn jwt_rejects_malformed_tokens() {
+        let auth = AuthScheme::jwt_hs256("s");
+        let header = URL_SAFE_NO_PAD.encode(br#"{"alg":"HS256","typ":"JWT"}"#);
+        let payload = URL_SAFE_NO_PAD.encode(json!({ "exp": future_exp() }).to_string());
+
+        // Only two segments.
+        let two = format!("{header}.{payload}");
+        assert!(auth.authorize(Some(&format!("Bearer {two}")), None).is_err());
+
+        // Header is not JSON.
+        let bad_header = URL_SAFE_NO_PAD.encode(b"xxx");
+        let tok = format!("{bad_header}.{payload}.sig");
+        assert!(auth.authorize(Some(&format!("Bearer {tok}")), None).is_err());
+
+        // Valid HS256 signature but the claims are not JSON.
+        let payload_bad = URL_SAFE_NO_PAD.encode(b"not-json");
+        let mut mac = Hmac::<Sha256>::new_from_slice(b"s").unwrap();
+        mac.update(format!("{header}.{payload_bad}").as_bytes());
+        let sig = URL_SAFE_NO_PAD.encode(mac.finalize().into_bytes());
+        let tok = format!("{header}.{payload_bad}.{sig}");
+        assert!(auth.authorize(Some(&format!("Bearer {tok}")), None).is_err());
+    }
+
+    #[test]
+    fn jwt_rejects_not_yet_valid() {
+        let auth = AuthScheme::jwt_hs256("s");
+        let token = make_jwt("s", json!({ "exp": future_exp(), "nbf": unix_now() + 1000 }));
+        assert!(auth
+            .authorize(Some(&format!("Bearer {token}")), None)
+            .is_err());
+    }
+
+    #[test]
+    fn jwks_from_json_rejects_unusable_input() {
+        // No usable RSA keys.
+        assert!(JwksStore::from_json(r#"{"keys":[]}"#).is_err());
+        // Not JSON at all.
+        assert!(JwksStore::from_json("not json").is_err());
+    }
+
     // ── RS256 / JWKS ─────────────────────────────────────────────────────
 
     /// A fixed RSA-2048 test key (PKCS#8 DER, base64). Test-only material.
