@@ -1,10 +1,12 @@
 //! Integration tests for A2A delegation, persistent sessions, trust chains,
 //! and DID identities — all offline (mock LLM, ephemeral local servers).
 
+#[cfg(feature = "server")]
 use std::sync::Arc;
 
 use corrosive_agents::prelude::*;
 use futures_util::stream::BoxStream;
+#[cfg(feature = "server")]
 use serde_json::json;
 
 /// A deterministic LLM that answers with `echo:<last user message>`.
