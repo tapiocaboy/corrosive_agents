@@ -49,7 +49,11 @@ where
                     500 => "Internal Server Error",
                     _ => "OK",
                 };
-                let extra = if status == 429 { "Retry-After: 0\r\n" } else { "" };
+                let extra = if status == 429 {
+                    "Retry-After: 0\r\n"
+                } else {
+                    ""
+                };
                 let resp = format!(
                     "HTTP/1.1 {status} {reason}\r\nContent-Type: application/json\r\nContent-Length: {}\r\n{extra}Connection: close\r\n\r\n{out}",
                     out.len()

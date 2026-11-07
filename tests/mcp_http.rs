@@ -26,7 +26,10 @@ fn mcp_handler(body: &str) -> (u16, String) {
             "tools": [{ "name": "echo", "description": "echoes text", "inputSchema": { "type": "object" } }]
         }),
         "tools/call" => {
-            let name = req.pointer("/params/name").and_then(Value::as_str).unwrap_or("");
+            let name = req
+                .pointer("/params/name")
+                .and_then(Value::as_str)
+                .unwrap_or("");
             if name == "boom" {
                 json!({ "isError": true, "content": [{ "type": "text", "text": "kaboom" }] })
             } else {
@@ -45,7 +48,10 @@ fn mcp_handler(body: &str) -> (u16, String) {
         }),
         _ => json!({}),
     };
-    (200, json!({ "jsonrpc": "2.0", "id": id, "result": result }).to_string())
+    (
+        200,
+        json!({ "jsonrpc": "2.0", "id": id, "result": result }).to_string(),
+    )
 }
 
 #[tokio::test]
@@ -64,7 +70,10 @@ async fn mcp_http_client_full_surface() {
     assert_eq!(tools.len(), 1);
     assert_eq!(tools[0].name, "echo");
 
-    let out = client.call_tool("echo", json!({ "text": "hi" })).await.unwrap();
+    let out = client
+        .call_tool("echo", json!({ "text": "hi" }))
+        .await
+        .unwrap();
     assert!(out.to_string().contains("tool ok"));
 
     // A tool that reports isError → Err.
@@ -108,7 +117,9 @@ async fn mcp_http_surfaces_jsonrpc_errors() {
     })
     .await;
 
-    let client = McpClient::connect(&McpServerConfig::http("m", url)).await.unwrap();
+    let client = McpClient::connect(&McpServerConfig::http("m", url))
+        .await
+        .unwrap();
     let err = client.list_tools().await.unwrap_err();
     assert!(matches!(err, Error::Mcp(_)), "got: {err}");
 }
@@ -123,7 +134,9 @@ async fn mcp_connect_requires_command_or_url() {
 #[tokio::test]
 async fn mcp_http_reports_transport_errors() {
     let url = mock_http(|_m, _p, _b| (500, r#"{"error":"down"}"#.to_string())).await;
-    let err = McpClient::connect(&McpServerConfig::http("m", url)).await.unwrap_err();
+    let err = McpClient::connect(&McpServerConfig::http("m", url))
+        .await
+        .unwrap_err();
     assert!(matches!(err, Error::Mcp(_)), "got: {err}");
 }
 
@@ -144,7 +157,10 @@ async fn agent_connects_and_calls_mcp_servers() {
     let tools = agent.mcp_tools("mock").await.unwrap();
     assert_eq!(tools[0].name, "echo");
 
-    let out = agent.call_mcp_tool("mock", "echo", json!({ "x": 1 })).await.unwrap();
+    let out = agent
+        .call_mcp_tool("mock", "echo", json!({ "x": 1 }))
+        .await
+        .unwrap();
     assert!(out.to_string().contains("tool ok"));
 
     // A server that was never connected is an error.

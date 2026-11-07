@@ -136,7 +136,10 @@ async fn retries_on_429_then_succeeds() {
         .await
         .unwrap();
     assert_eq!(resp.content, "recovered");
-    assert!(calls.load(Ordering::SeqCst) >= 2, "should have retried once");
+    assert!(
+        calls.load(Ordering::SeqCst) >= 2,
+        "should have retried once"
+    );
 }
 
 #[tokio::test]

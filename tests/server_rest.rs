@@ -1,5 +1,6 @@
 //! REST server coverage: every route through a real axum server on an
 //! ephemeral port, plus the API-key auth gate and graceful shutdown.
+#![cfg(feature = "server")]
 
 mod common;
 
@@ -18,7 +19,11 @@ fn build_agent() -> Arc<Agent> {
             .description("served agent")
             .capability(Capability::new("chat", "conversation"))
             .llm(EchoLlm::default())
-            .skill(FnSkill::new("echo", "echoes input", |i| async move { Ok(i) }))
+            .skill(FnSkill::new(
+                "echo",
+                "echoes input",
+                |i| async move { Ok(i) },
+            ))
             .generate_identity()
             .build()
             .unwrap(),
@@ -46,10 +51,20 @@ async fn rest_endpoints_respond() {
     assert_eq!(r.json::<Value>().await.unwrap()["status"], "ok");
 
     // Readiness flips with set_ready.
-    assert!(c.get(format!("{base}/ready")).send().await.unwrap().status().is_success());
+    assert!(c
+        .get(format!("{base}/ready"))
+        .send()
+        .await
+        .unwrap()
+        .status()
+        .is_success());
     agent.set_ready(false);
     assert_eq!(
-        c.get(format!("{base}/ready")).send().await.unwrap().status(),
+        c.get(format!("{base}/ready"))
+            .send()
+            .await
+            .unwrap()
+            .status(),
         503
     );
 
@@ -150,15 +165,29 @@ async fn rest_endpoints_respond() {
 #[tokio::test]
 async fn auth_gate_protects_non_probe_routes() {
     let agent = build_agent();
-    let base = spawn(server::router_with_auth(agent, AuthScheme::api_keys(["secret"]))).await;
+    let base = spawn(server::router_with_auth(
+        agent,
+        AuthScheme::api_keys(["secret"]),
+    ))
+    .await;
     let c = reqwest::Client::new();
 
     // Probes stay open.
-    assert!(c.get(format!("{base}/health")).send().await.unwrap().status().is_success());
+    assert!(c
+        .get(format!("{base}/health"))
+        .send()
+        .await
+        .unwrap()
+        .status()
+        .is_success());
 
     // Protected routes need the key.
     assert_eq!(
-        c.get(format!("{base}/agent")).send().await.unwrap().status(),
+        c.get(format!("{base}/agent"))
+            .send()
+            .await
+            .unwrap()
+            .status(),
         401
     );
     let ok = c

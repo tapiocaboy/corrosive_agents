@@ -23,7 +23,11 @@ fn agent() -> Arc<Agent> {
             .description("grpc agent")
             .capability(Capability::new("chat", "conversation"))
             .llm(EchoLlm::default())
-            .skill(FnSkill::new("echo", "echoes input", |i| async move { Ok(i) }))
+            .skill(FnSkill::new(
+                "echo",
+                "echoes input",
+                |i| async move { Ok(i) },
+            ))
             .generate_identity()
             .build()
             .unwrap(),

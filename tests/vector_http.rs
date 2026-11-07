@@ -44,7 +44,10 @@ async fn pinecone_upsert_search_delete() {
 
     let mut filter = MetadataFilter::new();
     filter.equals.insert("kind".into(), json!("greeting"));
-    let hits = store.search_filtered(vec![0.1, 0.2], 3, &filter).await.unwrap();
+    let hits = store
+        .search_filtered(vec![0.1, 0.2], 3, &filter)
+        .await
+        .unwrap();
     assert_eq!(hits.len(), 1);
 
     store.delete(&["d1".to_string()]).await.unwrap();
@@ -98,7 +101,10 @@ async fn qdrant_ensure_upsert_search_delete() {
 
     let mut filter = MetadataFilter::new();
     filter.equals.insert("k".into(), json!("v"));
-    let hits = store.search_filtered(vec![0.1, 0.2], 5, &filter).await.unwrap();
+    let hits = store
+        .search_filtered(vec![0.1, 0.2], 5, &filter)
+        .await
+        .unwrap();
     assert_eq!(hits.len(), 1);
 
     store.delete(&["d1".to_string()]).await.unwrap();
@@ -115,5 +121,8 @@ async fn qdrant_ensure_collection_early_returns_when_present() {
     })
     .await;
     // GET returns 200 → collection exists → no create call.
-    QdrantStore::new(url, "col").ensure_collection(2).await.unwrap();
+    QdrantStore::new(url, "col")
+        .ensure_collection(2)
+        .await
+        .unwrap();
 }

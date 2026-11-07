@@ -1,5 +1,6 @@
 //! WebSocket chat endpoint coverage (`/ws`): ping/pong, one-shot chat,
 //! streaming chat, and the invalid-message error path.
+#![cfg(feature = "server")]
 
 mod common;
 
@@ -56,14 +57,22 @@ async fn ws_ping_chat_stream_and_error() {
     assert_eq!(next_json(&mut ws).await["type"], "pong");
 
     // chat (non-streaming) → reply.
-    send(&mut ws, json!({ "type": "chat", "message": "hi", "session_id": "s" })).await;
+    send(
+        &mut ws,
+        json!({ "type": "chat", "message": "hi", "session_id": "s" }),
+    )
+    .await;
     let reply = next_json(&mut ws).await;
     assert_eq!(reply["type"], "reply");
     assert_eq!(reply["reply"], "echo: hi");
     assert_eq!(reply["session_id"], "s");
 
     // chat (streaming) → chunk(s) then done.
-    send(&mut ws, json!({ "type": "chat", "message": "hi", "stream": true })).await;
+    send(
+        &mut ws,
+        json!({ "type": "chat", "message": "hi", "stream": true }),
+    )
+    .await;
     let mut text = String::new();
     loop {
         let m = next_json(&mut ws).await;

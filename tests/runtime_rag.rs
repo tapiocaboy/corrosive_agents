@@ -40,7 +40,11 @@ async fn chat_records_history_and_usage() {
     assert_eq!(usage.total_tokens, 5);
 
     // Session management.
-    assert!(agent.list_sessions().await.unwrap().contains(&"s1".to_string()));
+    assert!(agent
+        .list_sessions()
+        .await
+        .unwrap()
+        .contains(&"s1".to_string()));
     agent.clear_session("s1").await.unwrap();
     assert!(agent.session_history("s1").await.unwrap().is_empty());
 }
@@ -91,7 +95,9 @@ async fn remember_and_recall_round_trip() {
     let mut filter = MetadataFilter::new();
     filter.equals.insert("kind".into(), json!("code"));
     let filtered = agent.recall_filtered("rust", 5, &filter).await.unwrap();
-    assert!(filtered.iter().all(|r| r.text.as_deref() != Some("apple pie recipe")));
+    assert!(filtered
+        .iter()
+        .all(|r| r.text.as_deref() != Some("apple pie recipe")));
 
     assert!(agent.vector_store().is_some());
 }
@@ -107,14 +113,21 @@ async fn remember_batch_and_document() {
     assert_eq!(ids.len(), 2);
 
     // Empty batch is a no-op.
-    assert!(agent.remember_batch(&[], json!({})).await.unwrap().is_empty());
+    assert!(agent
+        .remember_batch(&[], json!({}))
+        .await
+        .unwrap()
+        .is_empty());
 
     let long = "word ".repeat(200);
     let doc_ids = agent
         .remember_document(&long, json!({ "src": "doc" }), 100, 10)
         .await
         .unwrap();
-    assert!(doc_ids.len() > 1, "a long document should produce multiple chunks");
+    assert!(
+        doc_ids.len() > 1,
+        "a long document should produce multiple chunks"
+    );
 }
 
 #[tokio::test]
@@ -139,9 +152,16 @@ async fn info_and_capabilities_reflect_the_build() {
 #[tokio::test]
 async fn missing_providers_report_not_configured() {
     // No LLM configured → chat fails with NotConfigured.
-    let no_llm = Agent::builder().name("bare").version("1.0.0").build().unwrap();
+    let no_llm = Agent::builder()
+        .name("bare")
+        .version("1.0.0")
+        .build()
+        .unwrap();
     let err = no_llm.chat("s", "hi").await.unwrap_err();
-    assert!(matches!(err, Error::NotConfigured("LLM provider")), "got: {err}");
+    assert!(
+        matches!(err, Error::NotConfigured("LLM provider")),
+        "got: {err}"
+    );
 
     // No embeddings/vector store → remember/recall fail with NotConfigured.
     let no_rag = Agent::builder()
